@@ -4,11 +4,12 @@ using System.Numerics;
 using System.Windows.Forms;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
+using _2dGameEngine.Input;
 
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 2 rendering runtime demonstration.
+/// Hosts the Phase 3 input runtime demonstration.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -27,6 +28,7 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(720, 480);
         ClientSize = new Size(960, 540);
+        KeyPreview = true;
 
         TableLayoutPanel layout = new()
         {
@@ -43,7 +45,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 2 Rendering",
+            Text = "2dGameEngine Phase 3 Input",
         };
 
         _engineStatusLabel = new Label
@@ -61,6 +63,10 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 16, 0, 0),
         };
         _viewport.Paint += OnViewportPaint;
+        _viewport.MouseDown += OnViewportMouseDown;
+        _viewport.MouseUp += OnViewportMouseUp;
+        _viewport.MouseMove += OnViewportMouseMove;
+        _viewport.MouseWheel += OnViewportMouseWheel;
 
         layout.Controls.Add(titleLabel, 0, 0);
         layout.Controls.Add(_engineStatusLabel, 0, 1);
@@ -74,10 +80,10 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _engine = new Engine();
-        Scene scene = new("Phase 2 Rendering Demo Scene");
-        _demoEntity = scene.CreateEntity("Moving Sprite");
-        _demoEntity.Transform.Value.Position = new Vector2(-220.0f, 0.0f);
-        _demoEntity.AddComponent(new EntityMotionComponent(new Vector2(72.0f, 0.0f)));
+        Scene scene = new("Phase 3 Input Demo Scene");
+        _demoEntity = scene.CreateEntity("Player Sprite");
+        _demoEntity.Transform.Value.Position = new Vector2(-120.0f, 0.0f);
+        _demoEntity.AddComponent(new EntityInputMovementComponent(180.0f));
         _demoEntity.AddComponent(new SpriteRenderer(new Vector2(96.0f, 96.0f), Color.CornflowerBlue));
 
         Entity marker = scene.CreateEntity("Scene Marker");
@@ -90,6 +96,9 @@ public sealed class MainForm : Form
 
         _engine.SetActiveScene(scene);
         _engine.Updated += OnEngineUpdated;
+        KeyDown += OnFormKeyDown;
+        KeyUp += OnFormKeyUp;
+
         _engine.Start();
     }
 
@@ -97,20 +106,23 @@ public sealed class MainForm : Form
     {
         _engine.Stop();
         _engine.Updated -= OnEngineUpdated;
+        KeyDown -= OnFormKeyDown;
+        KeyUp -= OnFormKeyUp;
         _viewport.Paint -= OnViewportPaint;
+        _viewport.MouseDown -= OnViewportMouseDown;
+        _viewport.MouseUp -= OnViewportMouseUp;
+        _viewport.MouseMove -= OnViewportMouseMove;
+        _viewport.MouseWheel -= OnViewportMouseWheel;
         base.OnFormClosed(e);
     }
 
     private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
     {
         Vector2 position = _demoEntity.Transform.Value.Position;
+        InputState input = args.Input;
+        Point mouseDelta = input.MouseDelta;
         _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})");
-
-        if (position.X > 260.0f)
-        {
-            _demoEntity.Transform.Value.Position = new Vector2(-260.0f, position.Y);
-        }
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nMove: WASD or Arrow Keys\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
 
         _viewport.Invalidate();
     }
@@ -118,6 +130,40 @@ public sealed class MainForm : Form
     private void OnViewportPaint(object? sender, PaintEventArgs e)
     {
         _renderer.Render(e.Graphics, _engine.ActiveScene, _viewport.ClientSize);
+    }
+
+    private void OnFormKeyDown(object? sender, KeyEventArgs e)
+    {
+        _engine.Input.SetKeyDown(e.KeyCode);
+    }
+
+    private void OnFormKeyUp(object? sender, KeyEventArgs e)
+    {
+        _engine.Input.SetKeyUp(e.KeyCode);
+    }
+
+    private void OnViewportMouseDown(object? sender, MouseEventArgs e)
+    {
+        _engine.Input.SetMouseButtonDown(e.Button);
+        _engine.Input.SetMousePosition(e.Location);
+        _viewport.Focus();
+    }
+
+    private void OnViewportMouseUp(object? sender, MouseEventArgs e)
+    {
+        _engine.Input.SetMouseButtonUp(e.Button);
+        _engine.Input.SetMousePosition(e.Location);
+    }
+
+    private void OnViewportMouseMove(object? sender, MouseEventArgs e)
+    {
+        _engine.Input.SetMousePosition(e.Location);
+    }
+
+    private void OnViewportMouseWheel(object? sender, MouseEventArgs e)
+    {
+        _engine.Input.AddMouseWheelDelta(e.Delta);
+        _engine.Input.SetMousePosition(e.Location);
     }
 
     private sealed class DoubleBufferedPanel : Panel

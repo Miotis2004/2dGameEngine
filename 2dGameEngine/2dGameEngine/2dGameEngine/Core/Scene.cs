@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using _2dGameEngine.Input;
 
 namespace _2dGameEngine.Core;
 
@@ -53,11 +54,11 @@ public sealed class Scene
         return AddEntity(entity);
     }
 
-    internal void Update(Time time)
+    internal void Update(Time time, InputState input)
     {
         foreach (Entity entity in _entities.ToArray())
         {
-            entity.Update(time);
+            entity.Update(time, input);
         }
     }
 }

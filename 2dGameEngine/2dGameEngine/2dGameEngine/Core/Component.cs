@@ -1,3 +1,5 @@
+using _2dGameEngine.Input;
+
 namespace _2dGameEngine.Core;
 
 /// <summary>
@@ -34,5 +36,15 @@ public abstract class Component
     /// <param name="time">Frame timing information.</param>
     public virtual void Update(Time time)
     {
+    }
+
+    /// <summary>
+    /// Called once per frame while the component and owning entity are enabled with access to input state.
+    /// </summary>
+    /// <param name="time">Frame timing information.</param>
+    /// <param name="input">Current input state.</param>
+    public virtual void Update(Time time, InputState input)
+    {
+        Update(time);
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using _2dGameEngine.Input;
 
 namespace _2dGameEngine.Core;
 
@@ -74,7 +75,7 @@ public sealed class Entity
         return _components.OfType<TComponent>().FirstOrDefault();
     }
 
-    internal void Update(Time time)
+    internal void Update(Time time, InputState input)
     {
         if (!IsEnabled)
         {
@@ -85,7 +86,7 @@ public sealed class Entity
         {
             if (component.IsEnabled)
             {
-                component.Update(time);
+                component.Update(time, input);
             }
         }
     }

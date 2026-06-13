@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Forms;
+using _2dGameEngine.Input;
 
 namespace _2dGameEngine.Core;
 
@@ -16,6 +17,7 @@ public sealed class Engine
     public Engine()
     {
         Time = new Time();
+        Input = new InputState();
         _updateTimer = new Timer
         {
             Interval = 16,
@@ -37,6 +39,11 @@ public sealed class Engine
     /// Gets engine timing information.
     /// </summary>
     public Time Time { get; }
+
+    /// <summary>
+    /// Gets the current keyboard and mouse input state.
+    /// </summary>
+    public InputState Input { get; }
 
     /// <summary>
     /// Gets a value indicating whether the engine update loop is running.
@@ -85,7 +92,8 @@ public sealed class Engine
     private void OnUpdateTimerTick(object? sender, EventArgs args)
     {
         Time.Update();
-        ActiveScene?.Update(Time);
-        Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene));
+        ActiveScene?.Update(Time, Input);
+        Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene, Input));
+        Input.AdvanceFrame();
     }
 }

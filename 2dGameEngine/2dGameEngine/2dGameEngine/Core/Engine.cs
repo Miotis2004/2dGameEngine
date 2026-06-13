@@ -1,18 +1,28 @@
 using System;
+using Microsoft.UI.Dispatching;
 
 namespace _2dGameEngine.Core;
 
 /// <summary>
 /// Coordinates engine startup, frame timing, and scene updates.
 /// </summary>
-internal sealed class Engine
+public sealed class Engine
 {
+    private readonly DispatcherQueueTimer _updateTimer;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="Engine"/> class.
     /// </summary>
-    public Engine()
+    /// <param name="dispatcherQueue">The dispatcher queue used to schedule frame updates.</param>
+    public Engine(DispatcherQueue dispatcherQueue)
     {
+        ArgumentNullException.ThrowIfNull(dispatcherQueue);
+
         Time = new Time();
+        _updateTimer = dispatcherQueue.CreateTimer();
+        _updateTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _updateTimer.IsRepeating = true;
+        _updateTimer.Tick += OnUpdateTimerTick;
     }
 
     /// <summary>
@@ -31,7 +41,7 @@ internal sealed class Engine
     public Time Time { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the engine is accepting update ticks.
+    /// Gets a value indicating whether the engine update loop is running.
     /// </summary>
     public bool IsRunning { get; private set; }
 
@@ -46,7 +56,7 @@ internal sealed class Engine
     }
 
     /// <summary>
-    /// Starts the engine runtime state.
+    /// Starts the engine update loop.
     /// </summary>
     public void Start()
     {
@@ -57,26 +67,25 @@ internal sealed class Engine
 
         Time.Start();
         IsRunning = true;
+        _updateTimer.Start();
     }
 
     /// <summary>
-    /// Stops the engine runtime state.
+    /// Stops the engine update loop.
     /// </summary>
     public void Stop()
-    {
-        IsRunning = false;
-    }
-
-    /// <summary>
-    /// Advances the engine by one frame. The host application owns how often this method is called.
-    /// </summary>
-    public void Update()
     {
         if (!IsRunning)
         {
             return;
         }
 
+        _updateTimer.Stop();
+        IsRunning = false;
+    }
+
+    private void OnUpdateTimerTick(DispatcherQueueTimer sender, object args)
+    {
         Time.Update();
         ActiveScene?.Update(Time);
         Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene));

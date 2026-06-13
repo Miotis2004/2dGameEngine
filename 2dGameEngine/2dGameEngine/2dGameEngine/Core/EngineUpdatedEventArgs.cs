@@ -7,7 +7,7 @@ namespace _2dGameEngine.Core;
 /// </summary>
 /// <param name="time">Frame timing information.</param>
 /// <param name="scene">The scene that was updated.</param>
-internal sealed class EngineUpdatedEventArgs(Time time, Scene? scene) : EventArgs
+public sealed class EngineUpdatedEventArgs(Time time, Scene? scene) : EventArgs
 {
     /// <summary>
     /// Gets frame timing information.

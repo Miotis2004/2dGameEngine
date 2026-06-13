@@ -6,7 +6,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Contains and updates the entities that make up a game world.
 /// </summary>
-internal sealed class Scene
+public sealed class Scene
 {
     private readonly List<Entity> _entities = [];
 

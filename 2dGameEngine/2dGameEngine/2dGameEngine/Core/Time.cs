@@ -5,7 +5,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Tracks frame timing information for engine updates.
 /// </summary>
-internal sealed class Time
+public sealed class Time
 {
     private DateTimeOffset _lastUpdateTime;
 

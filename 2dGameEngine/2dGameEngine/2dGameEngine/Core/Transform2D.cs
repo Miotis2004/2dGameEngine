@@ -5,7 +5,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Describes an entity's position, rotation, and scale in two-dimensional space.
 /// </summary>
-internal sealed class Transform2D
+public sealed class Transform2D
 {
     /// <summary>
     /// Gets or sets the entity position in world space.

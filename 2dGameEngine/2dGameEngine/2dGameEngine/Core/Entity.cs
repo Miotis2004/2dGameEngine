@@ -7,7 +7,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Represents a game object that can own components and be updated by a scene.
 /// </summary>
-internal sealed class Entity
+public sealed class Entity
 {
     private readonly List<Component> _components = [];
 

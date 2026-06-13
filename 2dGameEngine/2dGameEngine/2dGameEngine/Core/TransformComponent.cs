@@ -3,7 +3,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Component wrapper around an entity's two-dimensional transform.
 /// </summary>
-internal sealed class TransformComponent : Component
+public sealed class TransformComponent : Component
 {
     /// <summary>
     /// Gets the transform data for the owning entity.

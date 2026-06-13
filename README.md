@@ -280,7 +280,7 @@ A running application capable of updating entities every frame.
 
 Status:
 
-Completed. The engine foundation is platform-agnostic: the engine starts, advances time when the host ticks it, updates the active scene, and updates entity components. The current WinUI app hosts that runtime with a small timer-driven demo entity.
+Completed. The WinUI host starts the engine, schedules a frame update loop, advances engine time, updates the active scene, and displays a moving demo entity to validate entity/component updates.
 
 ---
 

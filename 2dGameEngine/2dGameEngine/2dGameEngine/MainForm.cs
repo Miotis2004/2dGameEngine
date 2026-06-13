@@ -5,16 +5,18 @@ using System.Windows.Forms;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Input;
+using _2dGameEngine.Physics;
 
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 3 input runtime demonstration.
+/// Hosts the Phase 4 physics runtime demonstration.
 /// </summary>
 public sealed class MainForm : Form
 {
     private readonly Engine _engine;
     private readonly Entity _demoEntity;
+    private readonly RigidBody2D _demoBody;
     private readonly Label _engineStatusLabel;
     private readonly Renderer2D _renderer;
     private readonly Panel _viewport;
@@ -45,7 +47,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 3 Input",
+            Text = "2dGameEngine Phase 4 Physics",
         };
 
         _engineStatusLabel = new Label
@@ -80,16 +82,26 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _engine = new Engine();
-        Scene scene = new("Phase 3 Input Demo Scene");
-        _demoEntity = scene.CreateEntity("Player Sprite");
-        _demoEntity.Transform.Value.Position = new Vector2(-120.0f, 0.0f);
-        _demoEntity.AddComponent(new EntityInputMovementComponent(180.0f));
-        _demoEntity.AddComponent(new SpriteRenderer(new Vector2(96.0f, 96.0f), Color.CornflowerBlue));
+        Scene scene = new("Phase 4 Physics Demo Scene");
+        _demoEntity = scene.CreateEntity("Player Rigidbody");
+        _demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
+        _demoBody = _demoEntity.AddComponent(new RigidBody2D());
+        _demoEntity.AddComponent(new BoxCollider2D(new Vector2(64.0f, 96.0f)));
+        _demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
+        _demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
 
-        Entity marker = scene.CreateEntity("Scene Marker");
-        marker.Transform.Value.Position = new Vector2(140.0f, 48.0f);
-        marker.Transform.Value.Rotation = MathF.PI / 8.0f;
-        marker.AddComponent(new SpriteRenderer(new Vector2(120.0f, 72.0f), Color.Orange)
+        Entity ground = scene.CreateEntity("Ground Collider");
+        ground.Transform.Value.Position = new Vector2(0.0f, 180.0f);
+        ground.AddComponent(new BoxCollider2D(new Vector2(760.0f, 48.0f)));
+        ground.AddComponent(new SpriteRenderer(new Vector2(760.0f, 48.0f), Color.ForestGreen)
+        {
+            SortingOrder = -1,
+        });
+
+        Entity platform = scene.CreateEntity("Raised Platform Collider");
+        platform.Transform.Value.Position = new Vector2(180.0f, 40.0f);
+        platform.AddComponent(new BoxCollider2D(new Vector2(220.0f, 36.0f)));
+        platform.AddComponent(new SpriteRenderer(new Vector2(220.0f, 36.0f), Color.Orange)
         {
             SortingOrder = -1,
         });
@@ -122,7 +134,7 @@ public sealed class MainForm : Form
         InputState input = args.Input;
         Point mouseDelta = input.MouseDelta;
         _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nMove: WASD or Arrow Keys\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
 
         _viewport.Invalidate();
     }

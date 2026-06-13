@@ -353,6 +353,19 @@ Deliverable:
 
 Basic platformer movement.
 
+Status:
+
+Completed. The runtime now includes a physics system that applies gravity to dynamic rigid bodies, resolves axis-aligned box collisions against static colliders, tracks grounded state, and drives a platformer demo player with horizontal movement and jumping.
+
+Verification:
+
+* Scenes own a PhysicsSystem and advance physics after component input updates each frame.
+* Dynamic entities can use RigidBody2D for velocity, gravity scale, kinematic state, and grounded state.
+* BoxCollider2D provides world-space bounds for collision detection.
+* CollisionWorld exposes reusable collider queries and AABB intersection checks.
+* PhysicsSystem integrates velocity, applies gravity, resolves collisions, and marks grounded bodies.
+* The demo scene includes a player rigidbody, ground collider, raised platform, and platformer movement controls.
+
 ---
 
 # Phase 5: Tilemaps
@@ -539,4 +552,4 @@ Project initialization complete.
 
 Phase 1: Engine Foundation has been verified complete.
 
-Development focus is ready to move to Phase 2: Rendering.
+Development focus is ready to move to Phase 5: Tilemaps.

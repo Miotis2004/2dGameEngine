@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using _2dGameEngine.Input;
+using _2dGameEngine.Physics;
 
 namespace _2dGameEngine.Core;
 
@@ -32,6 +33,11 @@ public sealed class Scene
     public IReadOnlyList<Entity> Entities => _entities;
 
     /// <summary>
+    /// Gets the physics simulation for this scene.
+    /// </summary>
+    public PhysicsSystem Physics { get; } = new();
+
+    /// <summary>
     /// Adds an entity to the scene.
     /// </summary>
     /// <param name="entity">The entity to add.</param>
@@ -60,5 +66,7 @@ public sealed class Scene
         {
             entity.Update(time, input);
         }
+
+        Physics.Step(this, time);
     }
 }

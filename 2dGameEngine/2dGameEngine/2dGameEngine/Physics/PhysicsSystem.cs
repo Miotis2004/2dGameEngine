@@ -74,30 +74,48 @@ public sealed class PhysicsSystem
                 continue;
             }
 
-            RectangleF current = bodyCollider.GetBounds();
-            RectangleF target = other.GetBounds();
-            if (!CollisionWorld.Intersects(current, target))
+            if (other is TilemapCollider2D tilemapCollider)
             {
+                ResolveTilemapCollision(body, bodyCollider, tilemapCollider);
                 continue;
             }
 
-            Vector2 correction = GetMinimumTranslation(current, target);
-            entity.Transform.Value.Position += correction;
+            ResolveBoundsCollision(body, bodyCollider.GetBounds(), other.GetBounds());
+        }
+    }
 
-            if (MathF.Abs(correction.X) > 0.0f)
+    private static void ResolveTilemapCollision(RigidBody2D body, Collider2D bodyCollider, TilemapCollider2D tilemapCollider)
+    {
+        foreach (RectangleF tileBounds in tilemapCollider.GetSolidTileBounds(bodyCollider.GetBounds()).ToArray())
+        {
+            ResolveBoundsCollision(body, bodyCollider.GetBounds(), tileBounds);
+        }
+    }
+
+    private static void ResolveBoundsCollision(RigidBody2D body, RectangleF current, RectangleF target)
+    {
+        if (!CollisionWorld.Intersects(current, target))
+        {
+            return;
+        }
+
+        Entity entity = body.Entity!;
+        Vector2 correction = GetMinimumTranslation(current, target);
+        entity.Transform.Value.Position += correction;
+
+        if (MathF.Abs(correction.X) > 0.0f)
+        {
+            body.Velocity = new Vector2(0.0f, body.Velocity.Y);
+        }
+
+        if (MathF.Abs(correction.Y) > 0.0f)
+        {
+            if (correction.Y < GroundNormalThreshold)
             {
-                body.Velocity = new Vector2(0.0f, body.Velocity.Y);
+                body.IsGrounded = true;
             }
 
-            if (MathF.Abs(correction.Y) > 0.0f)
-            {
-                if (correction.Y < GroundNormalThreshold)
-                {
-                    body.IsGrounded = true;
-                }
-
-                body.Velocity = new Vector2(body.Velocity.X, 0.0f);
-            }
+            body.Velocity = new Vector2(body.Velocity.X, 0.0f);
         }
     }
 

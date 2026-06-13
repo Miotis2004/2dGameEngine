@@ -1,5 +1,5 @@
 using System;
-using Microsoft.UI.Dispatching;
+using System.Windows.Forms;
 
 namespace _2dGameEngine.Core;
 
@@ -8,20 +8,18 @@ namespace _2dGameEngine.Core;
 /// </summary>
 public sealed class Engine
 {
-    private readonly DispatcherQueueTimer _updateTimer;
+    private readonly Timer _updateTimer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Engine"/> class.
     /// </summary>
-    /// <param name="dispatcherQueue">The dispatcher queue used to schedule frame updates.</param>
-    public Engine(DispatcherQueue dispatcherQueue)
+    public Engine()
     {
-        ArgumentNullException.ThrowIfNull(dispatcherQueue);
-
         Time = new Time();
-        _updateTimer = dispatcherQueue.CreateTimer();
-        _updateTimer.Interval = TimeSpan.FromMilliseconds(16);
-        _updateTimer.IsRepeating = true;
+        _updateTimer = new Timer
+        {
+            Interval = 16,
+        };
         _updateTimer.Tick += OnUpdateTimerTick;
     }
 
@@ -84,7 +82,7 @@ public sealed class Engine
         IsRunning = false;
     }
 
-    private void OnUpdateTimerTick(DispatcherQueueTimer sender, object args)
+    private void OnUpdateTimerTick(object? sender, EventArgs args)
     {
         Time.Update();
         ActiveScene?.Update(Time);

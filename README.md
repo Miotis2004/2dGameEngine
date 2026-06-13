@@ -278,6 +278,10 @@ Deliverable:
 
 A running application capable of updating entities every frame.
 
+Status:
+
+Completed. The WinUI host starts the engine, schedules a frame update loop, advances engine time, updates the active scene, and displays a moving demo entity to validate entity/component updates.
+
 ---
 
 # Phase 2: Rendering

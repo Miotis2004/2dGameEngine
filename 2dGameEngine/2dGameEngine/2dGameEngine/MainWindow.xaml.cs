@@ -1,31 +1,39 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
+using System.Numerics;
+using _2dGameEngine.Core;
+using Microsoft.UI.Xaml;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+namespace _2dGameEngine;
 
-namespace _2dGameEngine
+/// <summary>
+/// Hosts the Phase 1 engine runtime demonstration.
+/// </summary>
+public sealed partial class MainWindow : Window
 {
+    private readonly Engine _engine;
+    private readonly Entity _demoEntity;
+
     /// <summary>
-    /// An empty window that can be used on its own or navigated to within a Frame.
+    /// Initializes a new instance of the <see cref="MainWindow"/> class.
     /// </summary>
-    public sealed partial class MainWindow : Window
+    public MainWindow()
     {
-        public MainWindow()
-        {
-            InitializeComponent();
-        }
+        InitializeComponent();
+
+        _engine = new Engine(DispatcherQueue);
+        Scene scene = new("Phase 1 Demo Scene");
+        _demoEntity = scene.CreateEntity("Updating Entity");
+        _demoEntity.AddComponent(new EntityMotionComponent(new Vector2(32.0f, 0.0f)));
+
+        _engine.SetActiveScene(scene);
+        _engine.Updated += OnEngineUpdated;
+        _engine.Start();
+    }
+
+    private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
+    {
+        Vector2 position = _demoEntity.Transform.Value.Position;
+        EngineStatusText.Text = FormattableString.Invariant(
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})");
     }
 }

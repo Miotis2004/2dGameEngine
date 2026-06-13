@@ -13,7 +13,22 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
+        <TextBlock
+            FontSize="24"
+            FontWeight="SemiBold"
+            Text="2dGameEngine Phase 1 Runtime" />
+
+        <TextBlock
+            x:Name="EngineStatusText"
+            Grid.Row="1"
+            FontFamily="Consolas"
+            FontSize="16"
+            Text="Starting engine..." />
     </Grid>
 </Window>

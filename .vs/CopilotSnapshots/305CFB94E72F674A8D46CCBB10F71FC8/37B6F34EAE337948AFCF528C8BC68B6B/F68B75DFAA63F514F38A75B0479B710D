@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -200,21 +200,9 @@ public sealed class AssetManager : IDisposable
     private static string CombineAssetPath(string? directory, string assetPath)
     {
         string normalizedAssetPath = NormalizeAssetPath(assetPath);
-        if (string.IsNullOrWhiteSpace(directory))
-        {
-            return normalizedAssetPath;
-        }
-
-        string normalizedDirectory = NormalizeAssetPath(directory);
-
-        // If the asset path already starts with the directory segment, don't prepend it again
-        if (normalizedAssetPath.StartsWith(normalizedDirectory + '/', StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedAssetPath, normalizedDirectory, StringComparison.OrdinalIgnoreCase))
-        {
-            return normalizedAssetPath;
-        }
-
-        return NormalizeAssetPath(Path.Combine(directory, normalizedAssetPath));
+        return string.IsNullOrWhiteSpace(directory)
+            ? normalizedAssetPath
+            : NormalizeAssetPath(Path.Combine(directory, normalizedAssetPath));
     }
 
     private sealed record TextureDocument(int Width, int Height, string? Fill, TextureRegionDocument[]? Regions);

@@ -1,0 +1,6 @@
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\bin\x64\Debug\Microsoft.Web.WebView2.Core.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\bin\x64\Debug\Microsoft.Web.WebView2.Core.Projection.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\bin\x64\Debug\Microsoft.Web.WebView2.Core.winmd
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\obj\x64\Debug\2dGameEngine (Package).wapproj.AssemblyReference.cache
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\obj\x64\Debug\2dGameEngine (Package).wapproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine (Package)\obj\x64\Debug\2dGameEn.4E0C7DF3.Up2Date

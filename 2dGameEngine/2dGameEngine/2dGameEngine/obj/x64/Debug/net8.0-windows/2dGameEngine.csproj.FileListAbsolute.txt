@@ -1,0 +1,17 @@
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\2dGameEngine.exe
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\2dGameEngine.deps.json
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\2dGameEngine.runtimeconfig.json
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\2dGameEngine.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\2dGameEngine.pdb
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.AssemblyInfoInputs.cache
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.AssemblyInfo.cs
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.csproj.CoreCompileInputs.cache
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.sourcelink.json
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\refint\2dGameEngine.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.pdb
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\2dGameEngine.genruntimeconfig.cache
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\ref\2dGameEngine.dll
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\Content\Assets\demo-tiles.spritesheet.json
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\Content\Assets\demo-tiles.texture.json

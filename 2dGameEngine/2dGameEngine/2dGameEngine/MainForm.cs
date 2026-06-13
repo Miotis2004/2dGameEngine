@@ -1,7 +1,9 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Numerics;
 using System.Windows.Forms;
+using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Input;
@@ -10,10 +12,11 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 5 tilemap runtime demonstration.
+/// Hosts the Phase 6 content-system runtime demonstration.
 /// </summary>
 public sealed class MainForm : Form
 {
+    private readonly AssetManager _assets;
     private readonly Engine _engine;
     private readonly Entity _demoEntity;
     private readonly RigidBody2D _demoBody;
@@ -47,7 +50,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 5 Tilemaps",
+            Text = "2dGameEngine Phase 6 Content System",
         };
 
         _engineStatusLabel = new Label
@@ -81,8 +84,11 @@ public sealed class MainForm : Form
         };
         _renderer.Camera.Zoom = 1.0f;
 
+        _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
+        SpriteSheetAsset tileSprites = _assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
+
         _engine = new Engine();
-        Scene scene = new("Phase 5 Tilemap Demo Scene");
+        Scene scene = new("Phase 6 Content Demo Scene");
         _demoEntity = scene.CreateEntity("Player Rigidbody");
         _demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
         _demoBody = _demoEntity.AddComponent(new RigidBody2D());
@@ -96,9 +102,9 @@ public sealed class MainForm : Form
         {
             SortingOrder = -10,
         });
-        tilemap.SetDefinition(new TileDefinition(1, Color.ForestGreen));
-        tilemap.SetDefinition(new TileDefinition(2, Color.SaddleBrown));
-        tilemap.SetDefinition(new TileDefinition(3, Color.Orange));
+        tilemap.SetDefinition(new TileDefinition(1, Color.ForestGreen) { Frame = tileSprites.GetFrame("grass") });
+        tilemap.SetDefinition(new TileDefinition(2, Color.SaddleBrown) { Frame = tileSprites.GetFrame("dirt") });
+        tilemap.SetDefinition(new TileDefinition(3, Color.Orange) { Frame = tileSprites.GetFrame("platform") });
 
         for (int x = 0; x < tilemap.Width; x++)
         {
@@ -137,6 +143,7 @@ public sealed class MainForm : Form
         _viewport.MouseUp -= OnViewportMouseUp;
         _viewport.MouseMove -= OnViewportMouseMove;
         _viewport.MouseWheel -= OnViewportMouseWheel;
+        _assets.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -146,7 +153,7 @@ public sealed class MainForm : Form
         InputState input = args.Input;
         Point mouseDelta = input.MouseDelta;
         _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up, Land on solid tilemap cells\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up, Land on externally loaded sprite-sheet tiles\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
 
         _viewport.Invalidate();
     }

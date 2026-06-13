@@ -10,7 +10,7 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 4 physics runtime demonstration.
+/// Hosts the Phase 5 tilemap runtime demonstration.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -47,7 +47,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 4 Physics",
+            Text = "2dGameEngine Phase 5 Tilemaps",
         };
 
         _engineStatusLabel = new Label
@@ -82,7 +82,7 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _engine = new Engine();
-        Scene scene = new("Phase 4 Physics Demo Scene");
+        Scene scene = new("Phase 5 Tilemap Demo Scene");
         _demoEntity = scene.CreateEntity("Player Rigidbody");
         _demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
         _demoBody = _demoEntity.AddComponent(new RigidBody2D());
@@ -90,21 +90,33 @@ public sealed class MainForm : Form
         _demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
         _demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
 
-        Entity ground = scene.CreateEntity("Ground Collider");
-        ground.Transform.Value.Position = new Vector2(0.0f, 180.0f);
-        ground.AddComponent(new BoxCollider2D(new Vector2(760.0f, 48.0f)));
-        ground.AddComponent(new SpriteRenderer(new Vector2(760.0f, 48.0f), Color.ForestGreen)
+        Entity level = scene.CreateEntity("Tilemap Level");
+        level.Transform.Value.Position = new Vector2(-384.0f, -96.0f);
+        Tilemap tilemap = level.AddComponent(new Tilemap(24, 10, new Vector2(32.0f, 32.0f))
         {
-            SortingOrder = -1,
+            SortingOrder = -10,
         });
+        tilemap.SetDefinition(new TileDefinition(1, Color.ForestGreen));
+        tilemap.SetDefinition(new TileDefinition(2, Color.SaddleBrown));
+        tilemap.SetDefinition(new TileDefinition(3, Color.Orange));
 
-        Entity platform = scene.CreateEntity("Raised Platform Collider");
-        platform.Transform.Value.Position = new Vector2(180.0f, 40.0f);
-        platform.AddComponent(new BoxCollider2D(new Vector2(220.0f, 36.0f)));
-        platform.AddComponent(new SpriteRenderer(new Vector2(220.0f, 36.0f), Color.Orange)
+        for (int x = 0; x < tilemap.Width; x++)
         {
-            SortingOrder = -1,
-        });
+            tilemap.SetTile(x, 8, 1);
+            tilemap.SetTile(x, 9, 2);
+        }
+
+        for (int x = 14; x < 20; x++)
+        {
+            tilemap.SetTile(x, 5, 3);
+        }
+
+        for (int x = 4; x < 9; x++)
+        {
+            tilemap.SetTile(x, 6, 3);
+        }
+
+        level.AddComponent(new TilemapCollider2D());
 
         _engine.SetActiveScene(scene);
         _engine.Updated += OnEngineUpdated;
@@ -134,7 +146,7 @@ public sealed class MainForm : Form
         InputState input = args.Input;
         Point mouseDelta = input.MouseDelta;
         _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up, Land on solid tilemap cells\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
 
         _viewport.Invalidate();
     }

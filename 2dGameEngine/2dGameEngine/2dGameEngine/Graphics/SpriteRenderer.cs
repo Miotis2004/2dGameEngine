@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Numerics;
+using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 
 namespace _2dGameEngine.Graphics;
@@ -20,6 +21,11 @@ public sealed class SpriteRenderer(Vector2 size, Color color) : Component
     /// Gets or sets the sprite fill color.
     /// </summary>
     public Color Color { get; set; } = color;
+
+    /// <summary>
+    /// Gets or sets the optional texture frame drawn for this sprite.
+    /// </summary>
+    public SpriteFrame? Frame { get; set; }
 
     /// <summary>
     /// Gets or sets the optional sprite outline color.

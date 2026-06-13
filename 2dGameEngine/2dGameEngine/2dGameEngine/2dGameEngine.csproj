@@ -15,6 +15,13 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Content\Assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+
   <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>

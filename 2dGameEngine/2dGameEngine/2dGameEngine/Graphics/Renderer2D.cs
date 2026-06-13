@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Numerics;
+using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 
 namespace _2dGameEngine.Graphics;
@@ -80,12 +81,25 @@ public sealed class Renderer2D
             PointF screenPosition = Camera.WorldToScreen(new Vector2(worldBounds.X, worldBounds.Y), viewportSize);
             RectangleF screenBounds = new(screenPosition.X, screenPosition.Y, worldBounds.Width * zoom, worldBounds.Height * zoom);
 
-            using SolidBrush brush = new(definition.Color);
-            graphics.FillRectangle(brush, screenBounds);
+            DrawFrameOrColor(graphics, definition.Frame, definition.Color, screenBounds);
 
             using Pen gridPen = new(Color.FromArgb(90, Color.Black), Math.Max(1.0f, zoom));
             graphics.DrawRectangle(gridPen, screenBounds.X, screenBounds.Y, screenBounds.Width, screenBounds.Height);
         }
+    }
+
+    private static void DrawFrameOrColor(System.Drawing.Graphics graphics, SpriteFrame? frame, Color color, RectangleF bounds)
+    {
+        if (frame is not null)
+        {
+            graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+            graphics.PixelOffsetMode = PixelOffsetMode.Half;
+            graphics.DrawImage(frame.Texture.Image, bounds, frame.SourceRectangle, GraphicsUnit.Pixel);
+            return;
+        }
+
+        using SolidBrush brush = new(color);
+        graphics.FillRectangle(brush, bounds);
     }
 
     private void DrawSprite(System.Drawing.Graphics graphics, Entity entity, SpriteRenderer sprite, Size viewportSize)
@@ -101,8 +115,7 @@ public sealed class Renderer2D
         graphics.RotateTransform(entity.Transform.Value.Rotation * 180.0f / MathF.PI);
         graphics.TranslateTransform(-screenPosition.X, -screenPosition.Y);
 
-        using SolidBrush brush = new(sprite.Color);
-        graphics.FillRectangle(brush, bounds);
+        DrawFrameOrColor(graphics, sprite.Frame, sprite.Color, bounds);
 
         if (sprite.OutlineColor is Color outlineColor)
         {

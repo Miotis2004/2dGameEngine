@@ -1,4 +1,5 @@
 using System.Drawing;
+using _2dGameEngine.Content;
 
 namespace _2dGameEngine.Graphics;
 
@@ -19,6 +20,11 @@ public sealed class TileDefinition(int id, Color color, bool isSolid = true)
     /// Gets or sets the tile render color.
     /// </summary>
     public Color Color { get; set; } = color;
+
+    /// <summary>
+    /// Gets or sets the optional texture frame used to render this tile.
+    /// </summary>
+    public SpriteFrame? Frame { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether this tile should be treated as solid by tilemap colliders.

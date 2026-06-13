@@ -1,0 +1,26 @@
+{
+  "texture": "demo-tiles.texture.json",
+  "sprites": [
+    {
+      "name": "grass",
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    {
+      "name": "dirt",
+      "x": 32,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    {
+      "name": "platform",
+      "x": 64,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    }
+  ]
+}

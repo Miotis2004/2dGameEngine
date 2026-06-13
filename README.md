@@ -404,6 +404,19 @@ Deliverable:
 
 Assets loaded from project content folders.
 
+Status:
+
+Completed. The runtime now includes a content-root asset manager that loads external texture files, parses sprite sheet metadata, caches reusable assets, and renders sprite sheet frames through the existing sprite and tilemap renderer paths.
+
+Verification:
+
+* AssetManager loads content-relative textures from a project content folder and caches repeated requests.
+* Sprite sheet metadata maps named frames to texture atlas rectangles.
+* SpriteRenderer and TileDefinition can reference loaded sprite frames while preserving color fallback rendering.
+* Renderer2D draws loaded texture frames for sprites and tilemap cells.
+* The demo content folder contains a texture atlas and sprite sheet metadata that are copied to build output.
+* The Phase 6 demo scene loads tile visuals from the external content folder instead of hard-coded tile colors.
+
 ---
 
 # Phase 7: Animation

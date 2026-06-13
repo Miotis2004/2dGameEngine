@@ -1,5 +1,5 @@
 {
-  "texture": "Assets/demo-tiles.texture.json",
+  "texture": "demo-tiles.png",
   "sprites": [
     {
       "name": "grass",

@@ -15,3 +15,4 @@ C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGame
 C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\obj\x64\Debug\net8.0-windows\ref\2dGameEngine.dll
 C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\Content\Assets\demo-tiles.spritesheet.json
 C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\Content\Assets\demo-tiles.texture.json
+C:\Users\User\Desktop\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\2dGameEngine\bin\x64\Debug\net8.0-windows\Content\Assets\demo-tiles.png

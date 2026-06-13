@@ -3,7 +3,7 @@ namespace _2dGameEngine.Core;
 /// <summary>
 /// Base type for reusable behavior attached to an entity.
 /// </summary>
-public abstract class Component
+internal abstract class Component
 {
     /// <summary>
     /// Gets the entity that owns this component.

@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using _2dGameEngine.Animation;
 
 namespace _2dGameEngine.Content;
 
@@ -14,6 +15,7 @@ public sealed class AssetManager : IDisposable
 {
     private readonly Dictionary<string, TextureAsset> _textures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SpriteSheetAsset> _spriteSheets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AnimationClip> _animationClips = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AssetManager"/> class.
@@ -97,6 +99,59 @@ public sealed class AssetManager : IDisposable
         return spriteSheet;
     }
 
+
+    /// <summary>
+    /// Loads animation clip metadata and returns the cached instance on subsequent calls.
+    /// </summary>
+    public AnimationClip LoadAnimationClip(string assetPath)
+    {
+        string normalizedPath = NormalizeAssetPath(assetPath);
+        if (_animationClips.TryGetValue(normalizedPath, out AnimationClip? cached))
+        {
+            return cached;
+        }
+
+        string fullPath = ResolvePath(normalizedPath);
+        AnimationClipDocument document = JsonSerializer.Deserialize<AnimationClipDocument>(File.ReadAllText(fullPath), JsonOptions)
+            ?? throw new InvalidDataException($"Animation clip '{normalizedPath}' is empty or invalid.");
+
+        if (string.IsNullOrWhiteSpace(document.Name))
+        {
+            throw new InvalidDataException($"Animation clip '{normalizedPath}' does not specify a name.");
+        }
+
+        if (string.IsNullOrWhiteSpace(document.SpriteSheet))
+        {
+            throw new InvalidDataException($"Animation clip '{normalizedPath}' does not specify a sprite sheet.");
+        }
+
+        if (document.Frames is null || document.Frames.Length == 0)
+        {
+            throw new InvalidDataException($"Animation clip '{normalizedPath}' does not define any frames.");
+        }
+
+        SpriteSheetAsset spriteSheet = LoadSpriteSheet(CombineAssetPath(Path.GetDirectoryName(normalizedPath), document.SpriteSheet));
+        List<AnimationFrame> frames = [];
+        foreach (AnimationFrameDocument frame in document.Frames)
+        {
+            if (string.IsNullOrWhiteSpace(frame.Sprite))
+            {
+                throw new InvalidDataException($"Animation clip '{normalizedPath}' contains a frame without a sprite name.");
+            }
+
+            if (frame.DurationMilliseconds <= 0)
+            {
+                throw new InvalidDataException($"Animation frame '{frame.Sprite}' in '{normalizedPath}' must have a positive duration.");
+            }
+
+            frames.Add(new AnimationFrame(spriteSheet.GetFrame(frame.Sprite), TimeSpan.FromMilliseconds(frame.DurationMilliseconds)));
+        }
+
+        AnimationClip clip = new(document.Name, frames, document.Loop);
+        _animationClips[normalizedPath] = clip;
+        return clip;
+    }
+
     /// <summary>
     /// Clears all cached assets and releases loaded textures.
     /// </summary>
@@ -109,6 +164,7 @@ public sealed class AssetManager : IDisposable
 
         _textures.Clear();
         _spriteSheets.Clear();
+        _animationClips.Clear();
     }
 
     /// <inheritdoc />
@@ -224,4 +280,8 @@ public sealed class AssetManager : IDisposable
     private sealed record SpriteSheetDocument(string Texture, SpriteFrameDocument[] Sprites);
 
     private sealed record SpriteFrameDocument(string Name, int X, int Y, int Width, int Height);
+
+    private sealed record AnimationClipDocument(string Name, string SpriteSheet, bool Loop, AnimationFrameDocument[] Frames);
+
+    private sealed record AnimationFrameDocument(string Sprite, double DurationMilliseconds);
 }

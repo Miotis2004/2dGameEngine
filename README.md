@@ -649,6 +649,322 @@ Completed. The editor now snapshots the edit scene before play, runs gameplay ag
 
 ---
 
+
+# Phase 16: Tilemap and Level Design Editor
+
+Goal:
+
+Turn tilemaps from runtime data into a production authoring workflow for building full 2D levels.
+
+Planned Features:
+
+* Tile palette pane sourced from imported sprite sheets
+* Brush, rectangle, fill, erase, and eyedropper paint tools
+* Multi-layer tilemaps with sorting layers and collision layers
+* Per-tile collider, tag, material, and custom property editing
+* Grid snapping, tile selection, and tile transform tools
+* Large-map chunking and dirty-region rendering for editor performance
+
+Deliverable:
+
+A tilemap editor that lets designers create, edit, validate, save, and test multi-layer platformer levels without hand-authoring JSON.
+
+---
+
+# Phase 17: Animation Timeline and Animator Controller
+
+Goal:
+
+Provide editor tooling for sprite animation, state machines, and previewable character behavior.
+
+Planned Features:
+
+* Animation clip editor with keyframes, events, frame timing, and sprite swaps
+* Timeline scrubbing, playback speed controls, looping, and onion-skin preview
+* Animator controller graph with states, transitions, parameters, and blend rules
+* Runtime animation event dispatch into C# components
+* Inspector authoring for animator parameters and default states
+* Import workflow for generating clips from sprite sheets
+
+Deliverable:
+
+A complete 2D animation authoring workflow that can build reusable clips and animator controllers for gameplay entities.
+
+---
+
+# Phase 18: Prefabs, Variants, and Nested Composition
+
+Goal:
+
+Allow reusable entity hierarchies to be authored once and instantiated consistently across scenes.
+
+Planned Features:
+
+* Create prefab assets from scene entities
+* Instantiate, unpack, and reconnect prefab instances
+* Property override tracking and revert/apply controls
+* Prefab variants for specialized enemies, pickups, and environment props
+* Nested prefab support with safe override propagation
+* Prefab editing stage isolated from the open scene
+
+Deliverable:
+
+A prefab workflow comparable to modern editor expectations, enabling scalable reuse of characters, hazards, pickups, cameras, and UI objects.
+
+---
+
+# Phase 19: Editor Undo, Selection, and Gizmo Maturity
+
+Goal:
+
+Make scene editing feel safe, predictable, and efficient across all major authoring actions.
+
+Planned Features:
+
+* Unified command history for hierarchy, transform, inspector, tilemap, asset, and prefab operations
+* Multi-selection with group transform handles
+* Move, rotate, scale, rect, and collider edit gizmos
+* Pivot, local/global space, snapping, and precision input controls
+* Clipboard copy/paste/duplicate for entities and components
+* Dirty-state tracking with save prompts and recovery after editor crashes
+
+Deliverable:
+
+A reliable editor interaction layer where destructive or complex scene edits can be confidently undone, redone, duplicated, and saved.
+
+---
+
+# Phase 20: Audio System and Mixer Editor
+
+Goal:
+
+Add production-ready audio playback and mixing for 2D games.
+
+Planned Features:
+
+* AudioClip asset import and previewing
+* AudioSource and AudioListener components
+* 2D spatial attenuation, panning, looping, and one-shot playback
+* Audio mixer groups with volume, mute, solo, and exposed parameters
+* Runtime control from C# scripts
+* Audio diagnostics for missing clips, invalid formats, and clipping risk
+
+Deliverable:
+
+An integrated audio workflow for importing sounds, placing emitters, mixing channels, and controlling playback from gameplay scripts.
+
+---
+
+# Phase 21: 2D Lighting, Materials, and Render Pipeline Tools
+
+Goal:
+
+Expand the renderer beyond simple sprites into configurable 2D visual production features.
+
+Planned Features:
+
+* Sprite materials with tint, blend mode, texture, normal map, and shader settings
+* 2D point, spot, global, and shape lights
+* Sorting groups, render layers, and camera culling masks
+* Post-processing stack for bloom, color grading, vignette, and pixel-perfect scaling
+* Render pipeline asset for project-level visual configuration
+* Scene view debug modes for overdraw, batches, colliders, and lighting
+
+Deliverable:
+
+A configurable 2D render pipeline that supports polished lighting, materials, camera effects, and editor diagnostics.
+
+---
+
+# Phase 22: UI Canvas and In-Game Interface Builder
+
+Goal:
+
+Support creation of menus, HUDs, dialogs, and editor-authored in-game interfaces.
+
+Planned Features:
+
+* Canvas, panel, image, text, button, slider, and layout components
+* Anchors, pivots, responsive scaling, and safe-area preview
+* UI event system with keyboard, mouse, and controller navigation
+* Font import, text styling, and localization-ready string references
+* Scene view UI editing with rect handles and alignment tools
+* Runtime APIs for updating UI from C# gameplay scripts
+
+Deliverable:
+
+A UI authoring system that lets games build interactive menus and HUDs directly in the editor.
+
+---
+
+# Phase 23: Project Build, Packaging, and Deployment
+
+Goal:
+
+Turn editor projects into distributable games.
+
+Planned Features:
+
+* Build settings window for target platform, scenes, icons, versioning, and output path
+* Deterministic content build pipeline with asset dependency collection
+* Release/debug build profiles
+* Windows desktop packaging and runnable folder export
+* Build logs, warnings, errors, and clickable diagnostics in the console
+* Generated player bootstrap that loads configured startup scenes and content bundles
+
+Deliverable:
+
+A one-click build workflow that produces a playable exported game from the current project.
+
+---
+
+# Phase 24: C# Debugging, Hot Reload, and Script Tooling
+
+Goal:
+
+Make C# gameplay iteration fast, observable, and editor-integrated.
+
+Planned Features:
+
+* Project build button with incremental compilation
+* Roslyn diagnostics surfaced in the console and inspector
+* Script recompilation and domain reload while preserving edit-mode scene state
+* Hot reload support for safe method-body changes during play mode
+* Script execution order settings
+* Breakpoint/debugger attach guidance and runtime stack traces linked to source files
+
+Deliverable:
+
+A productive C# authoring loop where code changes, diagnostics, and play-mode testing are integrated into the editor.
+
+---
+
+# Phase 25: Physics Authoring and Diagnostics
+
+Goal:
+
+Upgrade physics from a platformer validation system into an inspectable editor feature.
+
+Planned Features:
+
+* Physics material assets for friction, bounciness, density, and combine modes
+* Collider shape editing for boxes, circles, capsules, polygons, and tilemap outlines
+* Rigidbody constraints, triggers, layers, and collision matrix settings
+* Physics debug overlay for contacts, normals, broadphase bounds, and sleeping bodies
+* Joint components for hinges, distance links, springs, and motors
+* Deterministic fixed-step simulation controls and replayable physics tests
+
+Deliverable:
+
+A robust 2D physics authoring workflow with visual debugging and enough component coverage for common platformer, puzzle, and action games.
+
+---
+
+# Phase 26: Particles and Visual Effects Editor
+
+Goal:
+
+Enable common 2D visual effects without requiring custom gameplay code.
+
+Planned Features:
+
+* ParticleSystem2D component with emitter shapes, bursts, lifetime, speed, color, size, and rotation curves
+* Texture sheet animation for particle sprites
+* Collision, trigger, and sub-emitter modules
+* Effect preview window with pause, scrub, and restart controls
+* Reusable VFX preset assets
+* Runtime pooling and batching for particle performance
+
+Deliverable:
+
+An editor-driven 2D VFX system for smoke, sparks, pickups, explosions, ambient effects, and character feedback.
+
+---
+
+# Phase 27: Save Data, Localization, and Game Services
+
+Goal:
+
+Provide reusable systems needed by complete shipped games rather than isolated demos.
+
+Planned Features:
+
+* Save-game profile API with JSON and binary serializers
+* Project settings for save locations, migration versions, and encryption hooks
+* Localization tables for strings, fonts, sprites, and audio variants
+* Runtime locale switching and missing-translation diagnostics
+* Achievement/stat/event service abstractions
+* Editor validation for save schemas and localized content coverage
+
+Deliverable:
+
+A set of game-service foundations that support persistence, localization, and platform-facing feature integrations.
+
+---
+
+# Phase 28: Editor Extensibility and Package Management
+
+Goal:
+
+Let engine users extend the editor and share reusable tooling or runtime systems.
+
+Planned Features:
+
+* Editor extension API for custom windows, inspectors, importers, menu items, and gizmos
+* Package manifest format with dependencies, version ranges, samples, and documentation links
+* Local package discovery and project package installation
+* Template packages for components, editor tools, and runtime libraries
+* Sandboxed extension loading and diagnostics
+* Package update, remove, and validation workflows
+
+Deliverable:
+
+An extensibility model that allows teams to customize the editor and distribute reusable packages without modifying engine source.
+
+---
+
+# Phase 29: Performance Profiling and Memory Tools
+
+Goal:
+
+Expose runtime and editor performance data so projects can be optimized before release.
+
+Planned Features:
+
+* Frame profiler for update, physics, animation, rendering, scripting, and editor overhead
+* Memory profiler for assets, scenes, textures, audio, and managed allocations
+* Entity/component count dashboards and expensive-object highlighting
+* Render stats for draw calls, batches, texture swaps, and overdraw
+* Timeline capture export for bug reports and regression analysis
+* Performance budgets and automated warnings in play mode and builds
+
+Deliverable:
+
+A profiling suite that makes bottlenecks visible and actionable during editor iteration and packaged-game testing.
+
+---
+
+# Phase 30: Sample Game, Templates, and Documentation Hardening
+
+Goal:
+
+Prove the editor by shipping a complete sample game and the documentation needed for new users to succeed.
+
+Planned Features:
+
+* Complete 2D platformer sample project built only with public editor workflows
+* Additional project templates for blank, platformer, top-down, and UI-heavy games
+* Guided first-run tutorial and interactive editor onboarding
+* Manual pages for core systems, scripting, asset import, builds, and troubleshooting
+* API reference generation for runtime and editor assemblies
+* Regression checklist that validates the sample game through import, edit, play, build, and launch
+
+Deliverable:
+
+A Unity 2 milestone release candidate: a documented editor that can create, author, test, build, and ship a complete 2D game project.
+
+---
+
 # Coding Standards
 
 ## General Rules
@@ -714,8 +1030,6 @@ At that point, the engine will have successfully proven its foundational archite
 
 # Current Status
 
-Project initialization complete.
+Project has completed through Phase 15: Editor Play Mode Isolation, with additional editor, runtime, and workflow improvements beyond the original foundation milestone.
 
-Phase 1: Engine Foundation has been verified complete.
-
-Development focus is ready to move to Phase 5: Tilemaps.
+Development focus is ready to move to Phase 16: Tilemap and Level Design Editor, then continue through the expanded editor roadmap toward a Unity 2 milestone release candidate.

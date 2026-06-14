@@ -1,0 +1,344 @@
+using System;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using _2dGameEngine.Animation;
+using _2dGameEngine.Content;
+using _2dGameEngine.Core;
+using _2dGameEngine.Graphics;
+using _2dGameEngine.Physics;
+
+namespace _2dGameEngine.Serialization;
+
+/// <summary>
+/// Saves and restores scenes as stable, human-readable JSON documents.
+/// </summary>
+public static class SceneSerializer
+{
+    private const int CurrentSchemaVersion = 1;
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    /// <summary>
+    /// Serializes a scene to a JSON string.
+    /// </summary>
+    public static string Serialize(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return JsonSerializer.Serialize(ToDocument(scene), JsonOptions);
+    }
+
+    /// <summary>
+    /// Writes a serialized scene JSON document to disk.
+    /// </summary>
+    public static void Save(Scene scene, string path)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(path, Serialize(scene));
+    }
+
+    /// <summary>
+    /// Deserializes a scene from a JSON string.
+    /// </summary>
+    public static Scene Deserialize(string json, AssetManager? assets = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(json);
+        SceneDocument document = JsonSerializer.Deserialize<SceneDocument>(json, JsonOptions)
+            ?? throw new InvalidDataException("Scene document is empty or invalid.");
+
+        if (document.SchemaVersion != CurrentSchemaVersion)
+        {
+            throw new InvalidDataException($"Unsupported scene schema version '{document.SchemaVersion}'. Expected '{CurrentSchemaVersion}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(document.Name))
+        {
+            throw new InvalidDataException("Scene document does not specify a name.");
+        }
+
+        Scene scene = new(document.Name);
+        foreach (EntityDocument entityDocument in document.Entities ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entityDocument.Name))
+            {
+                throw new InvalidDataException("Scene contains an entity without a name.");
+            }
+
+            Entity entity = scene.CreateEntity(entityDocument.Name);
+            entity.IsEnabled = entityDocument.IsEnabled;
+            ApplyTransform(entity.Transform.Value, entityDocument.Transform);
+
+            foreach (ComponentDocument componentDocument in entityDocument.Components ?? [])
+            {
+                Component component = CreateComponent(componentDocument, assets);
+                component.IsEnabled = componentDocument.IsEnabled;
+                entity.AddComponent(component);
+            }
+        }
+
+        return scene;
+    }
+
+    /// <summary>
+    /// Reads and deserializes a scene JSON document from disk.
+    /// </summary>
+    public static Scene Load(string path, AssetManager? assets = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return Deserialize(File.ReadAllText(path), assets);
+    }
+
+    private static SceneDocument ToDocument(Scene scene)
+    {
+        return new SceneDocument(
+            CurrentSchemaVersion,
+            scene.Name,
+            scene.Entities.Select(entity => new EntityDocument(
+                entity.Name,
+                entity.IsEnabled,
+                ToTransformDocument(entity.Transform.Value),
+                entity.Components.Where(component => component is not TransformComponent).Select(ToComponentDocument).ToArray())).ToArray());
+    }
+
+    private static ComponentDocument ToComponentDocument(Component component)
+    {
+        ComponentDocument document = component switch
+        {
+            EntityMotionComponent motion => new ComponentDocument("EntityMotion", Velocity: ToVectorDocument(motion.Velocity)),
+            EntityInputMovementComponent movement => new ComponentDocument("EntityInputMovement", Speed: movement.Speed),
+            SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame)),
+            RigidBody2D body => new ComponentDocument("RigidBody2D", Velocity: ToVectorDocument(body.Velocity), GravityScale: body.GravityScale, IsKinematic: body.IsKinematic),
+            BoxCollider2D box => new ComponentDocument("BoxCollider2D", Size: ToVectorDocument(box.Size), Offset: ToVectorDocument(box.Offset), IsTrigger: box.IsTrigger),
+            TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger),
+            PlatformerMovementComponent platformer => new ComponentDocument("PlatformerMovement", MoveSpeed: platformer.MoveSpeed, JumpSpeed: platformer.JumpSpeed),
+            AnimationPlayer animation => ToAnimationPlayerDocument(animation),
+            Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
+            _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
+        };
+
+        return document with { IsEnabled = component.IsEnabled };
+    }
+
+    private static ComponentDocument ToAnimationPlayerDocument(AnimationPlayer animation)
+    {
+        if (string.IsNullOrWhiteSpace(animation.Clip.AssetPath))
+        {
+            throw new NotSupportedException("Animation players can only be serialized when their clip was loaded by AssetManager.");
+        }
+
+        return new ComponentDocument("AnimationPlayer", AnimationClip: animation.Clip.AssetPath, PlaybackSpeed: animation.PlaybackSpeed, IsPlaying: animation.IsPlaying);
+    }
+
+    private static Component CreateComponent(ComponentDocument document, AssetManager? assets)
+    {
+        return document.Type switch
+        {
+            "EntityMotion" => new EntityMotionComponent(FromVectorDocument(document.Velocity)),
+            "EntityInputMovement" => new EntityInputMovementComponent(document.Speed ?? 0.0f),
+            "SpriteRenderer" => CreateSpriteRenderer(document, assets),
+            "RigidBody2D" => new RigidBody2D { Velocity = FromVectorDocument(document.Velocity), GravityScale = document.GravityScale ?? 1.0f, IsKinematic = document.IsKinematic ?? false },
+            "BoxCollider2D" => new BoxCollider2D(FromVectorDocument(document.Size)) { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
+            "TilemapCollider2D" => new TilemapCollider2D { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
+            "PlatformerMovement" => new PlatformerMovementComponent(document.MoveSpeed ?? 0.0f, document.JumpSpeed ?? 0.0f),
+            "AnimationPlayer" => CreateAnimationPlayer(document, assets),
+            "Tilemap" => CreateTilemap(document, assets),
+            _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
+        };
+    }
+
+    private static SpriteRenderer CreateSpriteRenderer(ComponentDocument document, AssetManager? assets)
+    {
+        SpriteRenderer sprite = new(FromVectorDocument(document.Size), FromColorString(document.Color ?? "#FFFFFFFF"))
+        {
+            OutlineColor = document.OutlineColor is null ? null : FromColorString(document.OutlineColor),
+            SortingOrder = document.SortingOrder ?? 0,
+            Frame = FromFrameReference(document.Frame, assets),
+        };
+
+        return sprite;
+    }
+
+    private static AnimationPlayer CreateAnimationPlayer(ComponentDocument document, AssetManager? assets)
+    {
+        if (string.IsNullOrWhiteSpace(document.AnimationClip))
+        {
+            throw new InvalidDataException("Serialized animation players must specify an animation clip asset path.");
+        }
+
+        if (assets is null)
+        {
+            throw new InvalidDataException("Scene contains animation clip references, but no AssetManager was provided.");
+        }
+
+        AnimationPlayer player = new(assets.LoadAnimationClip(document.AnimationClip))
+        {
+            PlaybackSpeed = document.PlaybackSpeed ?? 1.0f,
+        };
+
+        if (document.IsPlaying == false)
+        {
+            player.Pause();
+        }
+
+        return player;
+    }
+
+    private static Tilemap CreateTilemap(ComponentDocument document, AssetManager? assets)
+    {
+        Tilemap tilemap = new(document.Width ?? 1, document.Height ?? 1, FromVectorDocument(document.TileSize))
+        {
+            SortingOrder = document.SortingOrder ?? 0,
+        };
+
+        foreach (TileDefinitionDocument definitionDocument in document.Definitions ?? [])
+        {
+            tilemap.SetDefinition(new TileDefinition(definitionDocument.Id, FromColorString(definitionDocument.Color), definitionDocument.IsSolid)
+            {
+                Frame = FromFrameReference(definitionDocument.Frame, assets),
+            });
+        }
+
+        string[] rows = document.Tiles ?? [];
+        for (int y = 0; y < Math.Min(rows.Length, tilemap.Height); y++)
+        {
+            int[] cells = rows[y].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToArray();
+            for (int x = 0; x < Math.Min(cells.Length, tilemap.Width); x++)
+            {
+                tilemap.SetTile(x, y, cells[x]);
+            }
+        }
+
+        return tilemap;
+    }
+
+    private static TileDefinitionDocument ToTileDefinitionDocument(TileDefinition definition)
+    {
+        return new TileDefinitionDocument(definition.Id, ToColorString(definition.Color), definition.IsSolid, ToFrameReference(definition.Frame));
+    }
+
+    private static string[] ToTileRows(Tilemap tilemap)
+    {
+        string[] rows = new string[tilemap.Height];
+        for (int y = 0; y < tilemap.Height; y++)
+        {
+            int[] cells = new int[tilemap.Width];
+            for (int x = 0; x < tilemap.Width; x++)
+            {
+                cells[x] = tilemap.GetTile(x, y);
+            }
+
+            rows[y] = string.Join(',', cells);
+        }
+
+        return rows;
+    }
+
+    private static FrameReferenceDocument? ToFrameReference(SpriteFrame? frame)
+    {
+        return frame is null || string.IsNullOrWhiteSpace(frame.SpriteSheetAssetPath)
+            ? null
+            : new FrameReferenceDocument(frame.SpriteSheetAssetPath, frame.Name);
+    }
+
+    private static SpriteFrame? FromFrameReference(FrameReferenceDocument? frame, AssetManager? assets)
+    {
+        if (frame is null)
+        {
+            return null;
+        }
+
+        if (assets is null)
+        {
+            throw new InvalidDataException("Scene contains sprite frame references, but no AssetManager was provided.");
+        }
+
+        return assets.LoadSpriteSheet(frame.SpriteSheet).GetFrame(frame.Name);
+    }
+
+    private static TransformDocument ToTransformDocument(Transform2D transform)
+    {
+        return new TransformDocument(ToVectorDocument(transform.Position), transform.Rotation, ToVectorDocument(transform.Scale));
+    }
+
+    private static void ApplyTransform(Transform2D transform, TransformDocument? document)
+    {
+        if (document is null)
+        {
+            return;
+        }
+
+        transform.Position = FromVectorDocument(document.Position);
+        transform.Rotation = document.Rotation;
+        transform.Scale = FromVectorDocument(document.Scale, Vector2.One);
+    }
+
+    private static Vector2Document ToVectorDocument(Vector2 vector) => new(vector.X, vector.Y);
+
+    private static Vector2 FromVectorDocument(Vector2Document? document, Vector2 defaultValue = default)
+    {
+        return document is null ? defaultValue : new Vector2(document.X, document.Y);
+    }
+
+    private static string ToColorString(Color color) => FormattableString.Invariant($"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}");
+
+    private static Color FromColorString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !value.StartsWith('#') || value.Length != 9)
+        {
+            throw new InvalidDataException($"Color '{value}' must use #AARRGGBB format.");
+        }
+
+        return Color.FromArgb(Convert.ToInt32(value[1..3], 16), Convert.ToInt32(value[3..5], 16), Convert.ToInt32(value[5..7], 16), Convert.ToInt32(value[7..9], 16));
+    }
+
+    private sealed record SceneDocument(int SchemaVersion, string Name, EntityDocument[]? Entities);
+
+    private sealed record EntityDocument(string Name, bool IsEnabled, TransformDocument? Transform, ComponentDocument[]? Components);
+
+    private sealed record TransformDocument(Vector2Document Position, float Rotation, Vector2Document Scale);
+
+    private sealed record Vector2Document(float X, float Y);
+
+    private sealed record FrameReferenceDocument(string SpriteSheet, string Name);
+
+    private sealed record TileDefinitionDocument(int Id, string Color, bool IsSolid, FrameReferenceDocument? Frame);
+
+    private sealed record ComponentDocument(
+        string Type,
+        bool IsEnabled = true,
+        Vector2Document? Velocity = null,
+        float? Speed = null,
+        Vector2Document? Size = null,
+        string? Color = null,
+        string? OutlineColor = null,
+        int? SortingOrder = null,
+        FrameReferenceDocument? Frame = null,
+        float? GravityScale = null,
+        bool? IsKinematic = null,
+        Vector2Document? Offset = null,
+        bool? IsTrigger = null,
+        float? MoveSpeed = null,
+        float? JumpSpeed = null,
+        string? AnimationClip = null,
+        float? PlaybackSpeed = null,
+        bool? IsPlaying = null,
+        int? Width = null,
+        int? Height = null,
+        Vector2Document? TileSize = null,
+        TileDefinitionDocument[]? Definitions = null,
+        string[]? Tiles = null);
+}

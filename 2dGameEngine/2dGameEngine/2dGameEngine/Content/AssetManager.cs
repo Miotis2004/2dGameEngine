@@ -91,7 +91,7 @@ public sealed class AssetManager : IDisposable
             }
 
             Rectangle source = new(sprite.X, sprite.Y, sprite.Width, sprite.Height);
-            frames[sprite.Name] = new SpriteFrame(sprite.Name, texture, source);
+            frames[sprite.Name] = new SpriteFrame(sprite.Name, texture, source, normalizedPath);
         }
 
         SpriteSheetAsset spriteSheet = new(normalizedPath, texture, frames);
@@ -147,7 +147,7 @@ public sealed class AssetManager : IDisposable
             frames.Add(new AnimationFrame(spriteSheet.GetFrame(frame.Sprite), TimeSpan.FromMilliseconds(frame.DurationMilliseconds)));
         }
 
-        AnimationClip clip = new(document.Name, frames, document.Loop);
+        AnimationClip clip = new(document.Name, frames, document.Loop, normalizedPath);
         _animationClips[normalizedPath] = clip;
         return clip;
     }

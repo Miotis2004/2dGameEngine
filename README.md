@@ -598,6 +598,10 @@ Deliverable:
 
 An asset pipeline that imports source files, tracks metadata, and exposes assets to scenes and runtime systems.
 
+Status:
+
+Completed. The editor now includes project asset import, refresh, and validation commands. Imported texture and audio files are copied into project asset folders, receive sidecar `.asset.json` metadata, appear in the project/assets tree, and texture assets can be selected for preview and metadata inspection.
+
 ---
 
 # Phase 14: Component and Script Authoring

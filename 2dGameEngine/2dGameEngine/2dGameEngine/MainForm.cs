@@ -11,6 +11,7 @@ using _2dGameEngine.Graphics;
 using _2dGameEngine.Input;
 using _2dGameEngine.Physics;
 using _2dGameEngine.Serialization;
+using _2dGameEngine.Scripting;
 
 namespace _2dGameEngine;
 
@@ -47,6 +48,8 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _importAssetButton;
     private readonly ToolStripButton _refreshAssetsButton;
     private readonly ToolStripButton _validateAssetsButton;
+    private readonly ToolStripDropDownButton _addComponentButton;
+    private readonly ToolStripButton _newScriptButton;
     private readonly PictureBox _assetPreviewBox;
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
@@ -59,7 +62,7 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 13 Asset Pipeline";
+        Text = "2dGameEngine - Phase 14 Component and Script Authoring";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -130,6 +133,21 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _addComponentButton = new ToolStripDropDownButton("Add Component")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        foreach (ComponentRecipe recipe in ComponentAuthoring.Recipes)
+        {
+            ToolStripMenuItem item = new($"{recipe.Category} / {recipe.Name}") { Tag = recipe };
+            item.Click += OnAddComponentRecipeClicked;
+            _addComponentButton.DropDownItems.Add(item);
+        }
+
+        _newScriptButton = new ToolStripButton("New Script")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addSpriteButton.Click += OnAddSpriteClicked;
         _duplicateButton.Click += OnDuplicateClicked;
         _deleteButton.Click += OnDeleteClicked;
@@ -137,6 +155,7 @@ public sealed class MainForm : Form
         _importAssetButton.Click += OnImportAssetClicked;
         _refreshAssetsButton.Click += OnRefreshAssetsClicked;
         _validateAssetsButton.Click += OnValidateAssetsClicked;
+        _newScriptButton.Click += OnNewScriptClicked;
         toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
@@ -149,6 +168,8 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_duplicateButton);
         toolStrip.Items.Add(_deleteButton);
         toolStrip.Items.Add(_saveSceneButton);
+        toolStrip.Items.Add(_addComponentButton);
+        toolStrip.Items.Add(_newScriptButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_importAssetButton);
         toolStrip.Items.Add(_refreshAssetsButton);
@@ -334,6 +355,11 @@ public sealed class MainForm : Form
         _importAssetButton.Click -= OnImportAssetClicked;
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
+        _newScriptButton.Click -= OnNewScriptClicked;
+        foreach (ToolStripItem item in _addComponentButton.DropDownItems)
+        {
+            item.Click -= OnAddComponentRecipeClicked;
+        }
         _projectAssetsTree.AfterSelect -= OnProjectAssetSelectionChanged;
         _hierarchyTree.AfterSelect -= OnHierarchySelectionChanged;
         _sceneEditorViewport.Paint -= OnSceneEditorPaint;
@@ -547,6 +573,8 @@ public sealed class MainForm : Form
 
         _deleteButton.Enabled = entity is not null;
         _duplicateButton.Enabled = entity is not null;
+        _addComponentButton.Enabled = entity is not null;
+        _newScriptButton.Enabled = entity is not null;
         _sceneEditorViewport.Invalidate();
     }
 
@@ -681,8 +709,48 @@ public sealed class MainForm : Form
             EntityInputMovementComponent movement => new EntityInputMovementComponent(movement.Speed),
             PlatformerMovementComponent platformer => new PlatformerMovementComponent(platformer.MoveSpeed, platformer.JumpSpeed),
             TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger },
+            AuthoredScriptComponent script => new AuthoredScriptComponent(script.ClassName, script.ScriptPath) { Description = script.Description },
             _ => null,
         };
+    }
+
+
+    private void OnAddComponentRecipeClicked(object? sender, EventArgs e)
+    {
+        if (_selectedEntity is null || sender is not ToolStripMenuItem { Tag: ComponentRecipe recipe })
+        {
+            return;
+        }
+
+        Component component = recipe.Factory();
+        _selectedEntity.AddComponent(component);
+        LogToConsole($"Added {recipe.Name} to '{_selectedEntity.Name}'.");
+        PopulateHierarchy(_engine.ActiveScene!);
+        ShowInspector(component);
+    }
+
+    private void OnNewScriptClicked(object? sender, EventArgs e)
+    {
+        if (_selectedEntity is null)
+        {
+            return;
+        }
+
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create a project before authoring scripts so the source file has a game assembly.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        string gameSourceDirectory = Path.Combine(_currentProject.ProjectDirectory, "src", $"{_currentProject.SafeName}.Game");
+        AuthoredScriptComponent script = ComponentAuthoring.CreateScript(gameSourceDirectory, _currentProject.SafeName, $"{_selectedEntity.Name}Behavior");
+        script.Properties["TargetEntity"] = _selectedEntity.Name;
+        _selectedEntity.AddComponent(script);
+        PopulateProjectAssetsPane(_currentProject);
+        PopulateHierarchy(_engine.ActiveScene!);
+        ShowInspector(script);
+        LogToConsole($"Created script '{script.ClassName}' and attached it to '{_selectedEntity.Name}'.");
+        _statusStripLabel.Text = $"Script created: {script.ScriptPath}";
     }
 
     private void OnNewProjectClicked(object? sender, EventArgs e)
@@ -807,6 +875,8 @@ public sealed class MainForm : Form
         _selectedEntity = e.Node?.Tag as Entity;
         _deleteButton.Enabled = _selectedEntity is not null;
         _duplicateButton.Enabled = _selectedEntity is not null;
+        _addComponentButton.Enabled = _selectedEntity is not null;
+        _newScriptButton.Enabled = _selectedEntity is not null;
         ShowInspector(e.Node?.Tag);
         _sceneEditorViewport.Invalidate();
     }
@@ -845,6 +915,14 @@ public sealed class MainForm : Form
                     AddInspectorRow("Slice", $"{asset.SliceWidth} x {asset.SliceHeight}");
                 }
 
+                break;
+            case AuthoredScriptComponent script:
+                _inspectorHeader.Text = script.ClassName;
+                AddInspectorRow("Type", "Authored Script");
+                AddInspectorRow("Enabled", script.IsEnabled.ToString());
+                AddInspectorRow("Entity", script.Entity?.Name ?? "<detached>");
+                AddInspectorRow("Source", script.ScriptPath);
+                AddInspectorRow("Properties", script.Properties.Count.ToString());
                 break;
             case Component component:
                 _inspectorHeader.Text = component.GetType().Name;

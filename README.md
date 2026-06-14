@@ -507,6 +507,19 @@ Deliverable:
 
 A fully playable platformer level.
 
+Status:
+
+Completed. The editor runtime preview now launches a Phase 10 platformer validation level that combines player control, jumping, camera follow, tilemap collision, animation playback, reset behavior, and a goal flag objective.
+
+Verification:
+
+* The main window is branded as the Phase 10 platformer validation project.
+* The preview scene creates a controllable player with rigidbody physics, a box collider, platformer movement, sprite rendering, and animation playback.
+* A larger tilemap level includes ground, multiple raised platforms, and tilemap collision.
+* The runtime camera follows the player during play.
+* Pressing R or falling below the level resets the player to the start position.
+* Reaching the gold goal flag marks the objective complete and updates the runtime status.
+
 ---
 
 # Coding Standards

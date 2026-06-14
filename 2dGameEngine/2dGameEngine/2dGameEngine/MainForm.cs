@@ -13,14 +13,17 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 9 editor foundation with a docked layout, scene viewport, and runtime preview controls.
+/// Hosts the Phase 10 platformer validation project inside the editor runtime preview.
 /// </summary>
 public sealed class MainForm : Form
 {
     private readonly AssetManager _assets;
     private readonly Engine _engine;
-    private readonly Entity _demoEntity;
-    private readonly RigidBody2D _demoBody;
+    private readonly Entity _playerEntity;
+    private readonly RigidBody2D _playerBody;
+    private readonly Entity _goalEntity;
+    private readonly Vector2 _playerStartPosition;
+    private bool _levelComplete;
     private readonly Renderer2D _renderer;
     private readonly TreeView _hierarchyTree;
     private readonly ListView _inspectorList;
@@ -36,7 +39,7 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 9 Editor Foundation";
+        Text = "2dGameEngine - Phase 10 Platformer Validation";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -49,7 +52,7 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
-        Scene scene = CreatePreviewScene(_assets, out _demoEntity, out _demoBody);
+        Scene scene = CreateValidationScene(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition);
 
         _engine = new Engine();
         _engine.SetActiveScene(scene);
@@ -127,7 +130,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Scene Viewport - live runtime preview (A/D or arrows to move, Space/W/Up to jump, mouse tracked)",
+            Text = "Platformer Validation - reach the gold flag (A/D or arrows move, Space/W/Up jump, R reset, mouse tracked)",
         };
         _viewport.Controls.Add(_viewportOverlayLabel);
 
@@ -221,23 +224,24 @@ public sealed class MainForm : Form
         return CreateDockPanel("Inspector", panel);
     }
 
-    private static Scene CreatePreviewScene(AssetManager assets, out Entity demoEntity, out RigidBody2D demoBody)
+    private static Scene CreateValidationScene(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)
     {
         SpriteSheetAsset tileSprites = assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
         AnimationClip playerIdle = assets.LoadAnimationClip("Assets/player-idle.animation.json");
 
-        Scene scene = new("Phase 9 Editor Preview Scene");
-        demoEntity = scene.CreateEntity("Player Rigidbody");
-        demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
-        demoBody = demoEntity.AddComponent(new RigidBody2D());
-        demoEntity.AddComponent(new BoxCollider2D(new Vector2(64.0f, 96.0f)));
-        demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
-        demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
-        demoEntity.AddComponent(new AnimationPlayer(playerIdle));
+        Scene scene = new("Phase 10 Platformer Validation Level");
+        playerStartPosition = new Vector2(-460.0f, 64.0f);
+        playerEntity = scene.CreateEntity("Player Controller");
+        playerEntity.Transform.Value.Position = playerStartPosition;
+        playerBody = playerEntity.AddComponent(new RigidBody2D());
+        playerEntity.AddComponent(new BoxCollider2D(new Vector2(42.0f, 58.0f)));
+        playerEntity.AddComponent(new PlatformerMovementComponent(285.0f, 610.0f));
+        playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10 });
+        playerEntity.AddComponent(new AnimationPlayer(playerIdle));
 
-        Entity level = scene.CreateEntity("Tilemap Level");
-        level.Transform.Value.Position = new Vector2(-384.0f, -96.0f);
-        Tilemap tilemap = level.AddComponent(new Tilemap(24, 10, new Vector2(32.0f, 32.0f))
+        Entity level = scene.CreateEntity("Validation Tilemap Level");
+        level.Transform.Value.Position = new Vector2(-640.0f, -96.0f);
+        Tilemap tilemap = level.AddComponent(new Tilemap(48, 14, new Vector2(32.0f, 32.0f))
         {
             SortingOrder = -10,
         });
@@ -247,22 +251,73 @@ public sealed class MainForm : Form
 
         for (int x = 0; x < tilemap.Width; x++)
         {
-            tilemap.SetTile(x, 8, 1);
-            tilemap.SetTile(x, 9, 2);
+            tilemap.SetTile(x, 12, 1);
+            tilemap.SetTile(x, 13, 2);
         }
 
-        for (int x = 14; x < 20; x++)
-        {
-            tilemap.SetTile(x, 5, 3);
-        }
+        AddPlatform(tilemap, 6, 9, 6);
+        AddPlatform(tilemap, 15, 7, 5);
+        AddPlatform(tilemap, 25, 8, 7);
+        AddPlatform(tilemap, 36, 6, 6);
+        AddPlatform(tilemap, 42, 10, 4);
 
-        for (int x = 4; x < 9; x++)
+        for (int y = 9; y < 12; y++)
         {
-            tilemap.SetTile(x, 6, 3);
+            tilemap.SetTile(30, y, 2);
         }
 
         level.AddComponent(new TilemapCollider2D());
+
+        goalEntity = scene.CreateEntity("Goal Flag");
+        goalEntity.Transform.Value.Position = new Vector2(840.0f, 68.0f);
+        goalEntity.AddComponent(new BoxCollider2D(new Vector2(44.0f, 96.0f)) { IsTrigger = true });
+        goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8 });
+
         return scene;
+    }
+
+    private static void AddPlatform(Tilemap tilemap, int startX, int y, int width)
+    {
+        for (int x = startX; x < startX + width; x++)
+        {
+            tilemap.SetTile(x, y, 3);
+        }
+    }
+
+    private void ResetValidationLevel()
+    {
+        _playerEntity.Transform.Value.Position = _playerStartPosition;
+        _playerBody.Velocity = Vector2.Zero;
+        _levelComplete = false;
+        SpriteRenderer? goalSprite = _goalEntity.GetComponent<SpriteRenderer>();
+        if (goalSprite is not null)
+        {
+            goalSprite.Color = Color.Gold;
+            goalSprite.OutlineColor = Color.OrangeRed;
+        }
+    }
+
+    private void UpdateGoalState()
+    {
+        if (_levelComplete)
+        {
+            return;
+        }
+
+        BoxCollider2D? playerCollider = _playerEntity.GetComponent<BoxCollider2D>();
+        BoxCollider2D? goalCollider = _goalEntity.GetComponent<BoxCollider2D>();
+        if (playerCollider is null || goalCollider is null || !CollisionWorld.Intersects(playerCollider.GetBounds(), goalCollider.GetBounds()))
+        {
+            return;
+        }
+
+        _levelComplete = true;
+        SpriteRenderer? goalSprite = _goalEntity.GetComponent<SpriteRenderer>();
+        if (goalSprite is not null)
+        {
+            goalSprite.Color = Color.LimeGreen;
+            goalSprite.OutlineColor = Color.White;
+        }
     }
 
     private void PopulateHierarchy(Scene scene)
@@ -345,15 +400,23 @@ public sealed class MainForm : Form
 
     private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
     {
-        Vector2 position = _demoEntity.Transform.Value.Position;
+        Vector2 position = _playerEntity.Transform.Value.Position;
         InputState input = args.Input;
+        if (input.WasKeyPressed(Keys.R) || position.Y > 440.0f)
+        {
+            ResetValidationLevel();
+            position = _playerEntity.Transform.Value.Position;
+        }
+
+        _renderer.Camera.Position = Vector2.Lerp(_renderer.Camera.Position, new Vector2(position.X + 160.0f, position.Y - 30.0f), 0.18f);
+        UpdateGoalState();
         Point mouseDelta = input.MouseDelta;
         string sceneName = args.Scene?.Name ?? "<none>";
         string runtimeState = _engine.IsRunning ? "Playing" : "Paused";
 
         _runtimeStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
-        _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()}");
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_playerEntity.Name}\nObjective: {(_levelComplete ? "Complete" : "Reach the gold flag")}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_playerBody.Velocity.X:0.00}, {_playerBody.Velocity.Y:0.00})\nGrounded: {_playerBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+        _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}");
         _viewport.Invalidate();
     }
 

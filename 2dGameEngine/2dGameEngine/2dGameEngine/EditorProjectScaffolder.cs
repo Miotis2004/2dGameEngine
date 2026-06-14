@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace _2dGameEngine;
@@ -197,13 +198,18 @@ Created with 2dGameEngine.
 * `Scenes` - Scene files.
 """;
 
-    private static string CreateDefaultScene(string projectName) => $$"""
-{
-  "name": "Main",
-  "project": "{{projectName.Replace("\"", "\\\"")}}",
-  "entities": []
-}
-""";
+    private static string CreateDefaultScene(string projectName)
+    {
+        var scene = new
+        {
+            schemaVersion = 1,
+            name = "Main",
+            project = projectName,
+            entities = Array.Empty<object>(),
+        };
+
+        return JsonSerializer.Serialize(scene, new JsonSerializerOptions { WriteIndented = true });
+    }
 }
 
 /// <summary>

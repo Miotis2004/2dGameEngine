@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Text.Json;
 using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
@@ -40,6 +41,7 @@ public sealed class MainForm : Form
     private readonly Panel _gameViewport;
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
+    private readonly string? _startupWarning;
     private readonly ToolStripButton _addSpriteButton;
     private readonly ToolStripButton _duplicateButton;
     private readonly ToolStripButton _deleteButton;
@@ -67,7 +69,7 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
-        Scene scene = CreateValidationScene(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition);
+        Scene scene = CreateValidationSceneOrFallback(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition, out _startupWarning);
 
         _engine = new Engine();
         _engine.SetActiveScene(scene);
@@ -216,6 +218,11 @@ public sealed class MainForm : Form
             Font = new Font(FontFamily.GenericMonospace, 9.0f),
         };
         LogToConsole("Editor workspace initialized.");
+        if (!string.IsNullOrWhiteSpace(_startupWarning))
+        {
+            LogToConsole(_startupWarning);
+            _statusStripLabel.Text = _startupWarning;
+        }
 
         SplitContainer rootSplit = new()
         {
@@ -342,6 +349,45 @@ public sealed class MainForm : Form
         panel.Controls.Add(_inspectorList);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
+    }
+
+
+    private static Scene CreateValidationSceneOrFallback(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition, out string? startupWarning)
+    {
+        try
+        {
+            startupWarning = null;
+            return CreateValidationScene(assets, out playerEntity, out playerBody, out goalEntity, out playerStartPosition);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or NotSupportedException or ArgumentException)
+        {
+            startupWarning = $"Validation assets could not be loaded; fallback scene active. {ex.Message}";
+            return CreateFallbackScene(out playerEntity, out playerBody, out goalEntity, out playerStartPosition);
+        }
+    }
+
+    private static Scene CreateFallbackScene(out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)
+    {
+        Scene scene = new("Phase 12 Fallback Editing Scene");
+        playerStartPosition = new Vector2(-160.0f, 0.0f);
+
+        playerEntity = scene.CreateEntity("Player Controller");
+        playerEntity.Transform.Value.Position = playerStartPosition;
+        playerBody = playerEntity.AddComponent(new RigidBody2D { IsKinematic = true });
+        playerEntity.AddComponent(new BoxCollider2D(new Vector2(42.0f, 58.0f)));
+        playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10 });
+
+        Entity platform = scene.CreateEntity("Fallback Platform");
+        platform.Transform.Value.Position = new Vector2(0.0f, 96.0f);
+        platform.AddComponent(new BoxCollider2D(new Vector2(420.0f, 32.0f)) { IsTrigger = true });
+        platform.AddComponent(new SpriteRenderer(new Vector2(420.0f, 32.0f), Color.ForestGreen) { OutlineColor = Color.DarkGreen, SortingOrder = 0 });
+
+        goalEntity = scene.CreateEntity("Goal Flag");
+        goalEntity.Transform.Value.Position = new Vector2(220.0f, 32.0f);
+        goalEntity.AddComponent(new BoxCollider2D(new Vector2(44.0f, 96.0f)) { IsTrigger = true });
+        goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8 });
+
+        return scene;
     }
 
     private static Scene CreateValidationScene(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)

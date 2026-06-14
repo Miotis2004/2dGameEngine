@@ -60,6 +60,17 @@ public sealed class Scene
         return AddEntity(entity);
     }
 
+    /// <summary>
+    /// Removes an entity from the scene.
+    /// </summary>
+    /// <param name="entity">The entity to remove.</param>
+    /// <returns><see langword="true"/> when the entity was present and removed.</returns>
+    public bool RemoveEntity(Entity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        return _entities.Remove(entity);
+    }
+
     internal void Update(Time time, InputState input)
     {
         foreach (Entity entity in _entities.ToArray())

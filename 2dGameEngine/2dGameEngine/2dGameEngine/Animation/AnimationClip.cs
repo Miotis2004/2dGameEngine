@@ -11,7 +11,7 @@ public sealed class AnimationClip
 {
     private readonly AnimationFrame[] _frames;
 
-    public AnimationClip(string name, IEnumerable<AnimationFrame> frames, bool isLooping = true)
+    public AnimationClip(string name, IEnumerable<AnimationFrame> frames, bool isLooping = true, string? assetPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(frames);
@@ -30,6 +30,7 @@ public sealed class AnimationClip
         Name = name;
         IsLooping = isLooping;
         Duration = TimeSpan.FromTicks(_frames.Sum(frame => frame.Duration.Ticks));
+        AssetPath = assetPath;
     }
 
     public string Name { get; }
@@ -39,6 +40,11 @@ public sealed class AnimationClip
     public bool IsLooping { get; }
 
     public TimeSpan Duration { get; }
+
+    /// <summary>
+    /// Gets the content-relative asset path this clip was loaded from, when available.
+    /// </summary>
+    public string? AssetPath { get; }
 
     public AnimationFrame GetFrameAt(TimeSpan elapsed)
     {

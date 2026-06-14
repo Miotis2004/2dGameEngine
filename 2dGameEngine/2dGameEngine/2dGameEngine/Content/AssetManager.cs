@@ -64,7 +64,7 @@ public sealed class AssetManager : IDisposable
 
         string fullPath = ResolvePath(normalizedPath);
         SpriteSheetDocument document = JsonSerializer.Deserialize<SpriteSheetDocument>(File.ReadAllText(fullPath), JsonOptions)
-            ?? throw new InvalidDataException($"Sprite sheet '{normalizedPath}' is empty or invalid.");
+            ?? throw new Exception($"Sprite sheet '{normalizedPath}' is empty or invalid.");
 
         if (string.IsNullOrWhiteSpace(document.Texture))
         {

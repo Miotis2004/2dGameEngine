@@ -6,7 +6,17 @@ using _2dGameEngine.Core;
 namespace _2dGameEngine.Graphics;
 
 /// <summary>
-/// Renders a simple colored rectangle for an entity until texture-backed sprites are introduced.
+/// Primitive shapes available for color-backed sprites.
+/// </summary>
+public enum SpritePrimitiveType
+{
+    Rectangle,
+    Circle,
+    Triangle,
+}
+
+/// <summary>
+/// Renders a texture-backed sprite or a simple colored primitive for an entity.
 /// </summary>
 /// <param name="size">The sprite size in world units.</param>
 /// <param name="color">The sprite fill color.</param>
@@ -21,6 +31,11 @@ public sealed class SpriteRenderer(Vector2 size, Color color) : Component
     /// Gets or sets the sprite fill color.
     /// </summary>
     public Color Color { get; set; } = color;
+
+    /// <summary>
+    /// Gets or sets the primitive shape used when no texture frame is assigned.
+    /// </summary>
+    public SpritePrimitiveType PrimitiveType { get; set; } = SpritePrimitiveType.Rectangle;
 
     /// <summary>
     /// Gets or sets the optional texture frame drawn for this sprite.

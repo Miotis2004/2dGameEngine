@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -60,6 +61,37 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder.\n");
 
         return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory);
+    }
+
+
+
+    /// <summary>
+    /// Loads metadata for an existing 2dGameEngine project folder.
+    /// </summary>
+    public static CreatedProject LoadProject(string projectDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectDirectory);
+        string fullProjectDirectory = Path.GetFullPath(projectDirectory);
+        if (!Directory.Exists(fullProjectDirectory))
+        {
+            throw new DirectoryNotFoundException($"Project directory '{fullProjectDirectory}' does not exist.");
+        }
+
+        string[] solutions = Directory.GetFiles(fullProjectDirectory, "*.sln", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.GetFiles(fullProjectDirectory, "*.slnx", SearchOption.TopDirectoryOnly))
+            .ToArray();
+        if (solutions.Length == 0)
+        {
+            throw new InvalidDataException($"Project directory '{fullProjectDirectory}' does not contain a solution file.");
+        }
+
+        string safeName = Path.GetFileNameWithoutExtension(solutions[0]);
+        string assetsDirectory = Path.Combine(fullProjectDirectory, "Assets");
+        string scenesDirectory = Path.Combine(fullProjectDirectory, "Scenes");
+        Directory.CreateDirectory(assetsDirectory);
+        Directory.CreateDirectory(scenesDirectory);
+
+        return new CreatedProject(safeName, safeName, fullProjectDirectory, solutions[0], assetsDirectory, scenesDirectory);
     }
 
     private static string ToSafeName(string projectName)
@@ -222,8 +254,8 @@ Created with 2dGameEngine.
 
     private static string CreateDefaultScene(string projectName) => $$"""
 {
+  "schemaVersion": 1,
   "name": "Main",
-  "project": "{{projectName.Replace("\"", "\\\"")}}",
   "entities": []
 }
 """;

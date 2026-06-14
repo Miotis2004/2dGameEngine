@@ -121,7 +121,7 @@ public static class SceneSerializer
         {
             EntityMotionComponent motion => new ComponentDocument("EntityMotion", Velocity: ToVectorDocument(motion.Velocity)),
             EntityInputMovementComponent movement => new ComponentDocument("EntityInputMovement", Speed: movement.Speed),
-            SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame)),
+            SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame), PrimitiveType: sprite.PrimitiveType.ToString()),
             RigidBody2D body => new ComponentDocument("RigidBody2D", Velocity: ToVectorDocument(body.Velocity), GravityScale: body.GravityScale, IsKinematic: body.IsKinematic),
             BoxCollider2D box => new ComponentDocument("BoxCollider2D", Size: ToVectorDocument(box.Size), Offset: ToVectorDocument(box.Offset), IsTrigger: box.IsTrigger),
             TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger),
@@ -190,6 +190,7 @@ public static class SceneSerializer
             OutlineColor = document.OutlineColor is null ? null : FromColorString(document.OutlineColor),
             SortingOrder = document.SortingOrder ?? 0,
             Frame = FromFrameReference(document.Frame, assets),
+            PrimitiveType = Enum.TryParse(document.PrimitiveType, ignoreCase: true, out SpritePrimitiveType primitiveType) ? primitiveType : SpritePrimitiveType.Rectangle,
         };
 
         return sprite;
@@ -352,6 +353,7 @@ public static class SceneSerializer
         string? OutlineColor = null,
         int? SortingOrder = null,
         FrameReferenceDocument? Frame = null,
+        string? PrimitiveType = null,
         float? GravityScale = null,
         bool? IsKinematic = null,
         Vector2Document? Offset = null,

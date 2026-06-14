@@ -46,12 +46,16 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _duplicateButton;
     private readonly ToolStripButton _deleteButton;
     private readonly ToolStripButton _saveSceneButton;
+    private readonly ToolStripButton _loadSceneButton;
     private readonly ToolStripButton _importAssetButton;
     private readonly ToolStripButton _refreshAssetsButton;
     private readonly ToolStripButton _validateAssetsButton;
     private readonly ToolStripDropDownButton _addComponentButton;
     private readonly ToolStripButton _newScriptButton;
     private readonly PictureBox _assetPreviewBox;
+    private readonly ContextMenuStrip _sceneContextMenu;
+    private readonly ContextMenuStrip _hierarchyContextMenu;
+    private Point _lastSceneContextPoint;
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
     private Vector2 _dragOffset;
@@ -95,7 +99,12 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        ToolStripButton loadProjectButton = new("Load Project")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         newProjectButton.Click += OnNewProjectClicked;
+        loadProjectButton.Click += OnLoadProjectClicked;
         _playButton = new ToolStripButton("Play")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -132,6 +141,10 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _loadSceneButton = new ToolStripButton("Load Scene")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _importAssetButton = new ToolStripButton("Import Asset")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -163,6 +176,7 @@ public sealed class MainForm : Form
         _duplicateButton.Click += OnDuplicateClicked;
         _deleteButton.Click += OnDeleteClicked;
         _saveSceneButton.Click += OnSaveSceneClicked;
+        _loadSceneButton.Click += OnLoadSceneClicked;
         _importAssetButton.Click += OnImportAssetClicked;
         _refreshAssetsButton.Click += OnRefreshAssetsClicked;
         _validateAssetsButton.Click += OnValidateAssetsClicked;
@@ -170,6 +184,7 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
+        toolStrip.Items.Add(loadProjectButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_playButton);
         toolStrip.Items.Add(_pauseButton);
@@ -180,6 +195,7 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_duplicateButton);
         toolStrip.Items.Add(_deleteButton);
         toolStrip.Items.Add(_saveSceneButton);
+        toolStrip.Items.Add(_loadSceneButton);
         toolStrip.Items.Add(_addComponentButton);
         toolStrip.Items.Add(_newScriptButton);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -197,6 +213,10 @@ public sealed class MainForm : Form
             HideSelection = false,
         };
         _hierarchyTree.AfterSelect += OnHierarchySelectionChanged;
+
+        _sceneContextMenu = CreateSceneContextMenu();
+        _hierarchyContextMenu = CreateHierarchyContextMenu();
+        _hierarchyTree.ContextMenuStrip = _hierarchyContextMenu;
 
         _inspectorHeader = new Label
         {
@@ -257,7 +277,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Scene Tools - click an entity to select, drag to move, Add Sprite/Duplicate/Delete/Save Scene available",
+            Text = "Scene Tools - left click selects/drags, right click opens creation and entity actions, save/load scene available",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -366,6 +386,7 @@ public sealed class MainForm : Form
         _duplicateButton.Click -= OnDuplicateClicked;
         _deleteButton.Click -= OnDeleteClicked;
         _saveSceneButton.Click -= OnSaveSceneClicked;
+        _loadSceneButton.Click -= OnLoadSceneClicked;
         _importAssetButton.Click -= OnImportAssetClicked;
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
@@ -422,6 +443,48 @@ public sealed class MainForm : Form
         panel.Controls.Add(_inspectorList);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
+    }
+
+
+
+    private ContextMenuStrip CreateSceneContextMenu()
+    {
+        ContextMenuStrip menu = new();
+        menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, _lastSceneContextPoint)));
+        menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, _lastSceneContextPoint)));
+        menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, _lastSceneContextPoint)));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(CreateMenuItem("Duplicate Selected", OnDuplicateClicked));
+        menu.Items.Add(CreateMenuItem("Delete Selected", OnDeleteClicked));
+        return menu;
+    }
+
+    private ContextMenuStrip CreateHierarchyContextMenu()
+    {
+        ContextMenuStrip menu = new();
+        menu.Opening += (_, _) =>
+        {
+            Point clientPoint = _hierarchyTree.PointToClient(Cursor.Position);
+            TreeNode? node = _hierarchyTree.GetNodeAt(clientPoint);
+            if (node is not null)
+            {
+                _hierarchyTree.SelectedNode = node;
+            }
+        };
+        menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, Point.Empty)));
+        menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, Point.Empty)));
+        menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, Point.Empty)));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(CreateMenuItem("Duplicate", OnDuplicateClicked));
+        menu.Items.Add(CreateMenuItem("Delete", OnDeleteClicked));
+        return menu;
+    }
+
+    private static ToolStripMenuItem CreateMenuItem(string text, EventHandler onClick)
+    {
+        ToolStripMenuItem item = new(text);
+        item.Click += onClick;
+        return item;
     }
 
     private static Scene CreateValidationScene(AssetManager assets)
@@ -482,6 +545,23 @@ public sealed class MainForm : Form
         _playerBody = _playerEntity.GetComponent<RigidBody2D>() ?? throw new InvalidDataException("Validation player is missing RigidBody2D.");
         _goalEntity = scene.Entities.First(entity => entity.Name == "Goal Flag");
         _playerStartPosition = _playerEntity.Transform.Value.Position;
+    }
+
+    private void TryBindValidationSceneReferences(Scene scene)
+    {
+        Entity? player = scene.Entities.FirstOrDefault(entity => entity.Name == "Player Controller");
+        Entity? goal = scene.Entities.FirstOrDefault(entity => entity.Name == "Goal Flag");
+        RigidBody2D? body = player?.GetComponent<RigidBody2D>();
+        if (player is null || goal is null || body is null)
+        {
+            _levelComplete = false;
+            return;
+        }
+
+        _playerEntity = player;
+        _playerBody = body;
+        _goalEntity = goal;
+        _playerStartPosition = player.Transform.Value.Position;
     }
 
     private static void AddPlatform(Tilemap tilemap, int startX, int y, int width)
@@ -614,19 +694,46 @@ public sealed class MainForm : Form
             return;
         }
 
-        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Sprite Entity"));
-        entity.Transform.Value.Position = _renderer.Camera.Position;
-        entity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 64.0f), Color.MediumPurple)
+        AddPrimitiveSprite(SpritePrimitiveType.Rectangle, Point.Empty);
+    }
+
+
+
+    private void AddPrimitiveSprite(SpritePrimitiveType primitiveType, Point viewportPoint)
+    {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        string primitiveName = primitiveType == SpritePrimitiveType.Rectangle ? "Sprite Entity" : $"{primitiveType} Sprite";
+        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, primitiveName));
+        entity.Transform.Value.Position = viewportPoint == Point.Empty ? _renderer.Camera.Position : ScreenToWorld(viewportPoint, _sceneEditorViewport.ClientSize);
+        entity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 64.0f), GetPrimitiveColor(primitiveType))
         {
             OutlineColor = Color.White,
             SortingOrder = 5,
+            PrimitiveType = primitiveType,
         });
 
-        LogToConsole($"Added entity '{entity.Name}'.");
+        LogToConsole($"Added {primitiveType.ToString().ToLowerInvariant()} sprite entity '{entity.Name}'.");
         PopulateHierarchy(_editScene);
         UpdatePlayModeControls();
         SelectEntity(entity);
     }
+
+    private static Color GetPrimitiveColor(SpritePrimitiveType primitiveType) => primitiveType switch
+    {
+        SpritePrimitiveType.Circle => Color.MediumSeaGreen,
+        SpritePrimitiveType.Triangle => Color.Coral,
+        _ => Color.MediumPurple,
+    };
 
     private void OnDuplicateClicked(object? sender, EventArgs e)
     {
@@ -701,6 +808,48 @@ public sealed class MainForm : Form
         }
     }
 
+
+
+    private void OnLoadSceneClicked(object? sender, EventArgs e)
+    {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
+        using OpenFileDialog dialog = new()
+        {
+            Filter = "Scene files|*.scene.json;*.json|All files|*.*",
+            InitialDirectory = _currentProject?.ScenesDirectory ?? Path.Combine(AppContext.BaseDirectory, "Scenes"),
+            Title = "Load Scene",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            Scene scene = SceneSerializer.Load(dialog.FileName, _assets);
+            _engine.Stop();
+            _editScene = scene;
+            _engine.SetActiveScene(_editScene);
+            TryBindValidationSceneReferences(_editScene);
+            SelectEntity(null);
+            PopulateHierarchy(_editScene);
+            ShowInspector(_editScene);
+            _sceneEditorViewport.Invalidate();
+            _gameViewport.Invalidate();
+            LogToConsole($"Loaded scene '{scene.Name}' from {dialog.FileName}");
+            _statusStripLabel.Text = $"Scene loaded: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Scene load failed: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Scene Load Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private static string SanitizeFileName(string value)
     {
         char[] invalid = Path.GetInvalidFileNameChars();
@@ -748,7 +897,7 @@ public sealed class MainForm : Form
     {
         return component switch
         {
-            SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame },
+            SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame, PrimitiveType = sprite.PrimitiveType },
             BoxCollider2D box => new BoxCollider2D(box.Size) { Offset = box.Offset, IsTrigger = box.IsTrigger },
             RigidBody2D body => new RigidBody2D { Velocity = body.Velocity, GravityScale = body.GravityScale, IsKinematic = body.IsKinematic },
             EntityMotionComponent motion => new EntityMotionComponent(motion.Velocity),
@@ -830,6 +979,36 @@ public sealed class MainForm : Form
         {
             LogToConsole($"Project creation failed: {ex.Message}");
             MessageBox.Show(this, ex.Message, "Project Creation Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+
+
+    private void OnLoadProjectClicked(object? sender, EventArgs e)
+    {
+        using FolderBrowserDialog dialog = new()
+        {
+            Description = "Select a 2dGameEngine project folder",
+            UseDescriptionForTitle = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _currentProject = EditorProjectScaffolder.LoadProject(dialog.SelectedPath);
+            _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
+            _assetPipeline.Refresh();
+            PopulateProjectAssetsPane(_currentProject);
+            LogToConsole($"Loaded project '{_currentProject.DisplayName}' from {_currentProject.ProjectDirectory}");
+            _statusStripLabel.Text = $"Project loaded: {_currentProject.SafeName}";
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Project load failed: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Project Load Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1000,6 +1179,16 @@ public sealed class MainForm : Form
 
     private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
     {
+        if (args.Scene is null || !args.Scene.Entities.Contains(_playerEntity))
+        {
+            string genericState = _engine.IsRunning ? "Playing" : "Paused";
+            _runtimeStatusLabel.Text = FormattableString.Invariant($"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {args.Scene?.Name ?? "<none>"}\nEntities: {args.Scene?.Entities.Count ?? 0}\nRuntime: {genericState}");
+            _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {genericState.ToLowerInvariant()}");
+            _sceneEditorViewport.Invalidate();
+            _gameViewport.Invalidate();
+            return;
+        }
+
         Vector2 position = _playerEntity.Transform.Value.Position;
         InputState input = args.Input;
         if (input.WasKeyPressed(Keys.R) || position.Y > 440.0f)
@@ -1057,7 +1246,7 @@ public sealed class MainForm : Form
                 _playModeSnapshot = SceneSerializer.Serialize(_editScene);
                 Scene runtimeScene = SceneSerializer.Deserialize(_playModeSnapshot, _assets);
                 _engine.SetActiveScene(runtimeScene);
-                BindValidationSceneReferences(runtimeScene);
+                TryBindValidationSceneReferences(runtimeScene);
                 SelectEntity(null);
                 PopulateHierarchy(runtimeScene);
                 _isPlayMode = true;
@@ -1137,7 +1326,7 @@ public sealed class MainForm : Form
         _playModeSnapshot = null;
         _isPlayMode = false;
         _engine.SetActiveScene(_editScene);
-        BindValidationSceneReferences(_editScene);
+        TryBindValidationSceneReferences(_editScene);
         PopulateHierarchy(_editScene);
         SelectEntity(string.IsNullOrWhiteSpace(selectedName) ? null : _editScene.Entities.FirstOrDefault(entity => entity.Name == selectedName));
     }
@@ -1152,6 +1341,7 @@ public sealed class MainForm : Form
         _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _saveSceneButton.Enabled = !_isPlayMode;
+        _loadSceneButton.Enabled = !_isPlayMode;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
     }
@@ -1193,15 +1383,20 @@ public sealed class MainForm : Form
             _engine.Input.SetMousePosition(e.Location);
         }
 
-        if (sender == _sceneEditorViewport && !_isPlayMode && e.Button == MouseButtons.Left)
+        if (sender == _sceneEditorViewport && !_isPlayMode)
         {
             Vector2 world = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize);
             Entity? hit = HitTestEntity(world);
             SelectEntity(hit);
-            if (hit is not null)
+            if (e.Button == MouseButtons.Left && hit is not null)
             {
                 _isDraggingSelection = true;
                 _dragOffset = hit.Transform.Value.Position - world;
+            }
+            else if (e.Button == MouseButtons.Right)
+            {
+                _lastSceneContextPoint = e.Location;
+                _sceneContextMenu.Show(_sceneEditorViewport, e.Location);
             }
         }
     }

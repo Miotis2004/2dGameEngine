@@ -102,6 +102,53 @@ public sealed class Renderer2D
         graphics.FillRectangle(brush, bounds);
     }
 
+    private static void DrawSpriteFill(System.Drawing.Graphics graphics, SpriteRenderer sprite, RectangleF bounds)
+    {
+        if (sprite.Frame is not null)
+        {
+            DrawFrameOrColor(graphics, sprite.Frame, sprite.Color, bounds);
+            return;
+        }
+
+        using SolidBrush brush = new(sprite.Color);
+        switch (sprite.PrimitiveType)
+        {
+            case SpritePrimitiveType.Circle:
+                graphics.FillEllipse(brush, bounds);
+                break;
+            case SpritePrimitiveType.Triangle:
+                graphics.FillPolygon(brush, GetTrianglePoints(bounds));
+                break;
+            default:
+                graphics.FillRectangle(brush, bounds);
+                break;
+        }
+    }
+
+    private static void DrawSpriteOutline(System.Drawing.Graphics graphics, SpriteRenderer sprite, RectangleF bounds, Pen pen)
+    {
+        if (sprite.Frame is not null || sprite.PrimitiveType == SpritePrimitiveType.Rectangle)
+        {
+            graphics.DrawRectangle(pen, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            return;
+        }
+
+        if (sprite.PrimitiveType == SpritePrimitiveType.Circle)
+        {
+            graphics.DrawEllipse(pen, bounds);
+            return;
+        }
+
+        graphics.DrawPolygon(pen, GetTrianglePoints(bounds));
+    }
+
+    private static PointF[] GetTrianglePoints(RectangleF bounds) =>
+    [
+        new PointF(bounds.X + bounds.Width / 2.0f, bounds.Y),
+        new PointF(bounds.Right, bounds.Bottom),
+        new PointF(bounds.X, bounds.Bottom),
+    ];
+
     private void DrawSprite(System.Drawing.Graphics graphics, Entity entity, SpriteRenderer sprite, Size viewportSize)
     {
         PointF screenPosition = Camera.WorldToScreen(entity.Transform.Value.Position, viewportSize);
@@ -115,12 +162,12 @@ public sealed class Renderer2D
         graphics.RotateTransform(entity.Transform.Value.Rotation * 180.0f / MathF.PI);
         graphics.TranslateTransform(-screenPosition.X, -screenPosition.Y);
 
-        DrawFrameOrColor(graphics, sprite.Frame, sprite.Color, bounds);
+        DrawSpriteFill(graphics, sprite, bounds);
 
         if (sprite.OutlineColor is Color outlineColor)
         {
             using Pen pen = new(outlineColor, 2.0f);
-            graphics.DrawRectangle(pen, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            DrawSpriteOutline(graphics, sprite, bounds, pen);
         }
 
         graphics.Restore(state);

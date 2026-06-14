@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Text.Json;
+using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
 using _2dGameEngine.Animation;
@@ -9,11 +11,12 @@ using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Input;
 using _2dGameEngine.Physics;
+using _2dGameEngine.Serialization;
 
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 11 editor workspace with project creation and runtime preview panes.
+/// Hosts the Phase 12 scene editing workspace with project creation and runtime preview panes.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -38,6 +41,14 @@ public sealed class MainForm : Form
     private readonly Panel _gameViewport;
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
+    private readonly string? _startupWarning;
+    private readonly ToolStripButton _addSpriteButton;
+    private readonly ToolStripButton _duplicateButton;
+    private readonly ToolStripButton _deleteButton;
+    private readonly ToolStripButton _saveSceneButton;
+    private Entity? _selectedEntity;
+    private bool _isDraggingSelection;
+    private Vector2 _dragOffset;
     private CreatedProject? _currentProject;
 
     /// <summary>
@@ -45,7 +56,7 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 11 Editor Workspace";
+        Text = "2dGameEngine - Phase 12 Scene Editing Tools";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -58,7 +69,7 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
-        Scene scene = CreateValidationScene(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition);
+        Scene scene = CreateValidationSceneOrFallback(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition, out _startupWarning);
 
         _engine = new Engine();
         _engine.SetActiveScene(scene);
@@ -88,6 +99,26 @@ public sealed class MainForm : Form
         _playButton.Click += OnPlayClicked;
         _pauseButton.Click += OnPauseClicked;
         _stopButton.Click += OnStopClicked;
+        _addSpriteButton = new ToolStripButton("Add Sprite")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _duplicateButton = new ToolStripButton("Duplicate")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _deleteButton = new ToolStripButton("Delete")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _saveSceneButton = new ToolStripButton("Save Scene")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _addSpriteButton.Click += OnAddSpriteClicked;
+        _duplicateButton.Click += OnDuplicateClicked;
+        _deleteButton.Click += OnDeleteClicked;
+        _saveSceneButton.Click += OnSaveSceneClicked;
         toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
@@ -95,6 +126,11 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_playButton);
         toolStrip.Items.Add(_pauseButton);
         toolStrip.Items.Add(_stopButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_addSpriteButton);
+        toolStrip.Items.Add(_duplicateButton);
+        toolStrip.Items.Add(_deleteButton);
+        toolStrip.Items.Add(_saveSceneButton);
 
         StatusStrip statusStrip = new();
         _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
@@ -165,7 +201,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Platformer Validation - reach the gold flag (A/D or arrows move, Space/W/Up jump, R reset, mouse tracked)",
+            Text = "Scene Tools - click an entity to select, drag to move, Add Sprite/Duplicate/Delete/Save Scene available",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -182,6 +218,11 @@ public sealed class MainForm : Form
             Font = new Font(FontFamily.GenericMonospace, 9.0f),
         };
         LogToConsole("Editor workspace initialized.");
+        if (!string.IsNullOrWhiteSpace(_startupWarning))
+        {
+            LogToConsole(_startupWarning);
+            _statusStripLabel.Text = _startupWarning;
+        }
 
         SplitContainer rootSplit = new()
         {
@@ -258,6 +299,10 @@ public sealed class MainForm : Form
         _playButton.Click -= OnPlayClicked;
         _pauseButton.Click -= OnPauseClicked;
         _stopButton.Click -= OnStopClicked;
+        _addSpriteButton.Click -= OnAddSpriteClicked;
+        _duplicateButton.Click -= OnDuplicateClicked;
+        _deleteButton.Click -= OnDeleteClicked;
+        _saveSceneButton.Click -= OnSaveSceneClicked;
         _hierarchyTree.AfterSelect -= OnHierarchySelectionChanged;
         _sceneEditorViewport.Paint -= OnSceneEditorPaint;
         _gameViewport.Paint -= OnGameViewportPaint;
@@ -304,6 +349,45 @@ public sealed class MainForm : Form
         panel.Controls.Add(_inspectorList);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
+    }
+
+
+    private static Scene CreateValidationSceneOrFallback(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition, out string? startupWarning)
+    {
+        try
+        {
+            startupWarning = null;
+            return CreateValidationScene(assets, out playerEntity, out playerBody, out goalEntity, out playerStartPosition);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or NotSupportedException or ArgumentException)
+        {
+            startupWarning = $"Validation assets could not be loaded; fallback scene active. {ex.Message}";
+            return CreateFallbackScene(out playerEntity, out playerBody, out goalEntity, out playerStartPosition);
+        }
+    }
+
+    private static Scene CreateFallbackScene(out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)
+    {
+        Scene scene = new("Phase 12 Fallback Editing Scene");
+        playerStartPosition = new Vector2(-160.0f, 0.0f);
+
+        playerEntity = scene.CreateEntity("Player Controller");
+        playerEntity.Transform.Value.Position = playerStartPosition;
+        playerBody = playerEntity.AddComponent(new RigidBody2D { IsKinematic = true });
+        playerEntity.AddComponent(new BoxCollider2D(new Vector2(42.0f, 58.0f)));
+        playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10 });
+
+        Entity platform = scene.CreateEntity("Fallback Platform");
+        platform.Transform.Value.Position = new Vector2(0.0f, 96.0f);
+        platform.AddComponent(new BoxCollider2D(new Vector2(420.0f, 32.0f)) { IsTrigger = true });
+        platform.AddComponent(new SpriteRenderer(new Vector2(420.0f, 32.0f), Color.ForestGreen) { OutlineColor = Color.DarkGreen, SortingOrder = 0 });
+
+        goalEntity = scene.CreateEntity("Goal Flag");
+        goalEntity.Transform.Value.Position = new Vector2(220.0f, 32.0f);
+        goalEntity.AddComponent(new BoxCollider2D(new Vector2(44.0f, 96.0f)) { IsTrigger = true });
+        goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8 });
+
+        return scene;
     }
 
     private static Scene CreateValidationScene(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)
@@ -431,10 +515,182 @@ public sealed class MainForm : Form
 
         _hierarchyTree.Nodes.Add(sceneNode);
         sceneNode.ExpandAll();
-        _hierarchyTree.SelectedNode = sceneNode.Nodes.Count > 0 ? sceneNode.Nodes[0] : sceneNode;
+        _hierarchyTree.SelectedNode = FindEntityNode(sceneNode, _selectedEntity) ?? (sceneNode.Nodes.Count > 0 ? sceneNode.Nodes[0] : sceneNode);
         _hierarchyTree.EndUpdate();
     }
 
+
+
+    private static TreeNode? FindEntityNode(TreeNode root, Entity? entity)
+    {
+        if (entity is null)
+        {
+            return null;
+        }
+
+        foreach (TreeNode node in root.Nodes)
+        {
+            if (ReferenceEquals(node.Tag, entity))
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    private void SelectEntity(Entity? entity)
+    {
+        _selectedEntity = entity;
+        TreeNode? match = _hierarchyTree.Nodes.Count > 0 ? FindEntityNode(_hierarchyTree.Nodes[0], entity) : null;
+        if (match is not null && !ReferenceEquals(_hierarchyTree.SelectedNode, match))
+        {
+            _hierarchyTree.SelectedNode = match;
+        }
+        else
+        {
+            ShowInspector(entity);
+        }
+
+        _deleteButton.Enabled = entity is not null;
+        _duplicateButton.Enabled = entity is not null;
+        _sceneEditorViewport.Invalidate();
+    }
+
+    private void OnAddSpriteClicked(object? sender, EventArgs e)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Sprite Entity"));
+        entity.Transform.Value.Position = _renderer.Camera.Position;
+        entity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 64.0f), Color.MediumPurple)
+        {
+            OutlineColor = Color.White,
+            SortingOrder = 5,
+        });
+
+        LogToConsole($"Added entity '{entity.Name}'.");
+        PopulateHierarchy(scene);
+        SelectEntity(entity);
+    }
+
+    private void OnDuplicateClicked(object? sender, EventArgs e)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null || _selectedEntity is null)
+        {
+            return;
+        }
+
+        Entity duplicate = DuplicateEntity(scene, _selectedEntity);
+        LogToConsole($"Duplicated '{_selectedEntity.Name}' as '{duplicate.Name}'.");
+        PopulateHierarchy(scene);
+        SelectEntity(duplicate);
+    }
+
+    private void OnDeleteClicked(object? sender, EventArgs e)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null || _selectedEntity is null)
+        {
+            return;
+        }
+
+        string name = _selectedEntity.Name;
+        scene.RemoveEntity(_selectedEntity);
+        _selectedEntity = null;
+        _isDraggingSelection = false;
+        LogToConsole($"Deleted entity '{name}'.");
+        PopulateHierarchy(scene);
+        ShowInspector(scene);
+        _sceneEditorViewport.Invalidate();
+    }
+
+    private void OnSaveSceneClicked(object? sender, EventArgs e)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        string sceneDirectory = _currentProject?.ScenesDirectory ?? Path.Combine(AppContext.BaseDirectory, "Scenes");
+        string scenePath = Path.Combine(sceneDirectory, $"{SanitizeFileName(scene.Name)}.scene.json");
+        try
+        {
+            SceneSerializer.Save(scene, scenePath);
+            PopulateProjectAssetsPane(_currentProject);
+            LogToConsole($"Saved scene to {scenePath}");
+            _statusStripLabel.Text = $"Scene saved: {scenePath}";
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Scene save failed: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Scene Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        char[] invalid = Path.GetInvalidFileNameChars();
+        string safe = new(value.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray());
+        return string.IsNullOrWhiteSpace(safe) ? "Scene" : safe;
+    }
+
+    private static string GetUniqueEntityName(Scene scene, string baseName)
+    {
+        if (!scene.Entities.Any(entity => entity.Name == baseName))
+        {
+            return baseName;
+        }
+
+        int suffix = 2;
+        while (scene.Entities.Any(entity => entity.Name == $"{baseName} {suffix}"))
+        {
+            suffix++;
+        }
+
+        return $"{baseName} {suffix}";
+    }
+
+    private static Entity DuplicateEntity(Scene scene, Entity source)
+    {
+        Entity duplicate = scene.CreateEntity(GetUniqueEntityName(scene, $"{source.Name} Copy"));
+        duplicate.IsEnabled = source.IsEnabled;
+        duplicate.Transform.Value.Position = source.Transform.Value.Position + new Vector2(32.0f, -32.0f);
+        duplicate.Transform.Value.Rotation = source.Transform.Value.Rotation;
+        duplicate.Transform.Value.Scale = source.Transform.Value.Scale;
+
+        foreach (Component component in source.Components.Where(component => component is not TransformComponent))
+        {
+            if (CloneComponent(component) is Component clone)
+            {
+                clone.IsEnabled = component.IsEnabled;
+                duplicate.AddComponent(clone);
+            }
+        }
+
+        return duplicate;
+    }
+
+    private static Component? CloneComponent(Component component)
+    {
+        return component switch
+        {
+            SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame },
+            BoxCollider2D box => new BoxCollider2D(box.Size) { Offset = box.Offset, IsTrigger = box.IsTrigger },
+            RigidBody2D body => new RigidBody2D { Velocity = body.Velocity, GravityScale = body.GravityScale, IsKinematic = body.IsKinematic },
+            EntityMotionComponent motion => new EntityMotionComponent(motion.Velocity),
+            EntityInputMovementComponent movement => new EntityInputMovementComponent(movement.Speed),
+            PlatformerMovementComponent platformer => new PlatformerMovementComponent(platformer.MoveSpeed, platformer.JumpSpeed),
+            TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger },
+            _ => null,
+        };
+    }
 
     private void OnNewProjectClicked(object? sender, EventArgs e)
     {
@@ -485,7 +741,11 @@ public sealed class MainForm : Form
 
     private void OnHierarchySelectionChanged(object? sender, TreeViewEventArgs e)
     {
+        _selectedEntity = e.Node?.Tag as Entity;
+        _deleteButton.Enabled = _selectedEntity is not null;
+        _duplicateButton.Enabled = _selectedEntity is not null;
         ShowInspector(e.Node?.Tag);
+        _sceneEditorViewport.Invalidate();
     }
 
     private void ShowInspector(object? selected)
@@ -555,6 +815,7 @@ public sealed class MainForm : Form
     {
         DrawViewportGrid(e.Graphics, _sceneEditorViewport.ClientSize);
         _renderer.Render(e.Graphics, _engine.ActiveScene, _sceneEditorViewport.ClientSize);
+        DrawSelectionOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
     }
 
     private void OnGameViewportPaint(object? sender, PaintEventArgs e)
@@ -616,23 +877,110 @@ public sealed class MainForm : Form
         _engine.Input.SetMouseButtonDown(e.Button);
         _engine.Input.SetMousePosition(e.Location);
         ((Control?)sender)?.Focus();
+
+        if (sender == _sceneEditorViewport && e.Button == MouseButtons.Left)
+        {
+            Vector2 world = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize);
+            Entity? hit = HitTestEntity(world);
+            SelectEntity(hit);
+            if (hit is not null)
+            {
+                _isDraggingSelection = true;
+                _dragOffset = hit.Transform.Value.Position - world;
+            }
+        }
     }
 
     private void OnViewportMouseUp(object? sender, MouseEventArgs e)
     {
         _engine.Input.SetMouseButtonUp(e.Button);
         _engine.Input.SetMousePosition(e.Location);
+        if (e.Button == MouseButtons.Left)
+        {
+            _isDraggingSelection = false;
+        }
     }
 
     private void OnViewportMouseMove(object? sender, MouseEventArgs e)
     {
         _engine.Input.SetMousePosition(e.Location);
+        if (sender == _sceneEditorViewport && _isDraggingSelection && _selectedEntity is not null)
+        {
+            _selectedEntity.Transform.Value.Position = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
+            ShowInspector(_selectedEntity);
+            _sceneEditorViewport.Invalidate();
+            _gameViewport.Invalidate();
+        }
     }
 
     private void OnViewportMouseWheel(object? sender, MouseEventArgs e)
     {
         _engine.Input.AddMouseWheelDelta(e.Delta);
         _engine.Input.SetMousePosition(e.Location);
+    }
+
+
+    private Vector2 ScreenToWorld(Point screenPosition, Size viewportSize)
+    {
+        float zoom = MathF.Max(0.01f, _renderer.Camera.Zoom);
+        Vector2 viewportCenter = new(viewportSize.Width / 2.0f, viewportSize.Height / 2.0f);
+        return (new Vector2(screenPosition.X, screenPosition.Y) - viewportCenter) / zoom + _renderer.Camera.Position;
+    }
+
+    private Entity? HitTestEntity(Vector2 worldPosition)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return null;
+        }
+
+        return scene.Entities.Reverse().FirstOrDefault(entity => entity.IsEnabled && GetEntityBounds(entity).Contains(worldPosition.X, worldPosition.Y));
+    }
+
+    private static RectangleF GetEntityBounds(Entity entity)
+    {
+        if (entity.GetComponent<SpriteRenderer>() is SpriteRenderer sprite)
+        {
+            Vector2 position = entity.Transform.Value.Position;
+            Vector2 scale = entity.Transform.Value.Scale;
+            float width = MathF.Max(1.0f, sprite.Size.X * scale.X);
+            float height = MathF.Max(1.0f, sprite.Size.Y * scale.Y);
+            return new RectangleF(position.X - width / 2.0f, position.Y - height / 2.0f, width, height);
+        }
+
+        if (entity.GetComponent<BoxCollider2D>() is BoxCollider2D box)
+        {
+            return box.GetBounds();
+        }
+
+        if (entity.GetComponent<Tilemap>() is Tilemap tilemap)
+        {
+            Vector2 origin = entity.Transform.Value.Position;
+            return new RectangleF(origin.X, origin.Y, tilemap.Width * tilemap.TileSize.X, tilemap.Height * tilemap.TileSize.Y);
+        }
+
+        Vector2 fallback = entity.Transform.Value.Position;
+        return new RectangleF(fallback.X - 12.0f, fallback.Y - 12.0f, 24.0f, 24.0f);
+    }
+
+    private void DrawSelectionOverlay(System.Drawing.Graphics graphics, Size viewportSize)
+    {
+        if (_selectedEntity is null)
+        {
+            return;
+        }
+
+        RectangleF worldBounds = GetEntityBounds(_selectedEntity);
+        PointF screenPosition = _renderer.Camera.WorldToScreen(new Vector2(worldBounds.X, worldBounds.Y), viewportSize);
+        float zoom = MathF.Max(0.01f, _renderer.Camera.Zoom);
+        RectangleF screenBounds = new(screenPosition.X, screenPosition.Y, worldBounds.Width * zoom, worldBounds.Height * zoom);
+        using Pen selectionPen = new(Color.DeepSkyBlue, 2.0f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+        graphics.DrawRectangle(selectionPen, screenBounds.X, screenBounds.Y, screenBounds.Width, screenBounds.Height);
+
+        PointF center = _renderer.Camera.WorldToScreen(_selectedEntity.Transform.Value.Position, viewportSize);
+        using SolidBrush brush = new(Color.DeepSkyBlue);
+        graphics.FillEllipse(brush, center.X - 4.0f, center.Y - 4.0f, 8.0f, 8.0f);
     }
 
     private sealed class DoubleBufferedPanel : Panel

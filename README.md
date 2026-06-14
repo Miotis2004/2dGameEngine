@@ -1030,6 +1030,6 @@ At that point, the engine will have successfully proven its foundational archite
 
 # Current Status
 
-Project has completed through Phase 15: Editor Play Mode Isolation, with additional editor, runtime, and workflow improvements beyond the original foundation milestone.
+Project has completed through Phase 16: Tilemap and Level Design Editor, with additional editor, runtime, and workflow improvements beyond the original foundation milestone.
 
-Development focus is ready to move to Phase 16: Tilemap and Level Design Editor, then continue through the expanded editor roadmap toward a Unity 2 milestone release candidate.
+Development focus is ready to continue through the expanded editor roadmap toward a Unity 2 milestone release candidate. Phase 16 adds tilemap creation, tile palette selection, scene-viewport tile painting and erasing, tile grid overlays, tilemap duplication, and scene JSON persistence for designed levels.

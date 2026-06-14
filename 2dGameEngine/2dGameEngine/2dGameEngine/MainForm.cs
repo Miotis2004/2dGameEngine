@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -59,6 +60,11 @@ public sealed class MainForm : Form
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
     private Vector2 _dragOffset;
+    private readonly HashSet<Panel> _dockPanels = new();
+    private readonly Dictionary<Control, DockPanelSlot> _dockSlotsByHost = new();
+    private Panel? _draggedDockPanel;
+    private DockPanelSlot? _dragSourceSlot;
+    private Point _panelDragOffset;
     private CreatedProject? _currentProject;
     private AssetPipeline? _assetPipeline;
     private Scene _editScene = null!;
@@ -361,6 +367,8 @@ public sealed class MainForm : Form
         inspectorConsoleSplit.Panel1.Controls.Add(CreateInspectorPanel());
         inspectorConsoleSplit.Panel2.Controls.Add(CreateDockPanel("Console", _consoleList));
 
+        RegisterDockPanelSlots(rootSplit);
+
         Controls.Add(rootSplit);
         Controls.Add(statusStrip);
         Controls.Add(toolStrip);
@@ -412,7 +420,7 @@ public sealed class MainForm : Form
         base.OnFormClosed(e);
     }
 
-    private static Panel CreateDockPanel(string title, Control content)
+    private Panel CreateDockPanel(string title, Control content)
     {
         Panel panel = new()
         {
@@ -422,16 +430,209 @@ public sealed class MainForm : Form
         Label header = new()
         {
             BackColor = Color.FromArgb(38, 44, 56),
+            Cursor = Cursors.SizeAll,
             Dock = DockStyle.Top,
             ForeColor = Color.White,
             Height = 28,
             Padding = new Padding(8, 6, 8, 0),
             Text = title,
         };
+        header.MouseDown += OnDockPanelHeaderMouseDown;
+        header.MouseMove += OnDockPanelHeaderMouseMove;
+        header.MouseUp += OnDockPanelHeaderMouseUp;
+        _dockPanels.Add(panel);
         content.Dock = DockStyle.Fill;
         panel.Controls.Add(content);
         panel.Controls.Add(header);
         return panel;
+    }
+
+
+    private void OnDockPanelHeaderMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || sender is not Control header || header.Parent is not Panel panel)
+        {
+            return;
+        }
+
+        BeginDockPanelDrag(panel, header, e.Location);
+    }
+
+    private void OnDockPanelHeaderMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (_draggedDockPanel is null || sender is not Control header || !header.Capture)
+        {
+            return;
+        }
+
+        Point cursorInForm = PointToClient(header.PointToScreen(e.Location));
+        Point targetLocation = new(cursorInForm.X - _panelDragOffset.X, cursorInForm.Y - _panelDragOffset.Y);
+        _draggedDockPanel.Location = ClampDockPanelLocation(_draggedDockPanel, targetLocation);
+    }
+
+    private void OnDockPanelHeaderMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (sender is Control header)
+        {
+            header.Capture = false;
+        }
+
+        if (_draggedDockPanel is not null)
+        {
+            CompleteDockPanelDrag(_draggedDockPanel);
+        }
+
+        _draggedDockPanel = null;
+        _dragSourceSlot = null;
+    }
+
+    private void BeginDockPanelDrag(Panel panel, Control header, Point headerMouseLocation)
+    {
+        _draggedDockPanel = panel;
+        _dragSourceSlot = GetDockPanelSlot(panel);
+        _panelDragOffset = panel.PointToClient(header.PointToScreen(headerMouseLocation));
+
+        if (_dragSourceSlot is not null)
+        {
+            FloatDockPanel(panel, _dragSourceSlot);
+        }
+
+        panel.BringToFront();
+        header.Capture = true;
+    }
+
+
+    private void RegisterDockPanelSlots(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            if (child is Panel panel && _dockPanels.Contains(panel) && panel.Parent is not null)
+            {
+                _dockSlotsByHost[panel.Parent] = new DockPanelSlot(panel.Parent, panel);
+            }
+
+            RegisterDockPanelSlots(child);
+        }
+    }
+
+    private DockPanelSlot? GetDockPanelSlot(Panel panel)
+    {
+        if (panel.Parent is not null && _dockSlotsByHost.TryGetValue(panel.Parent, out DockPanelSlot? parentSlot) && parentSlot.Panel == panel)
+        {
+            return parentSlot;
+        }
+
+        return _dockSlotsByHost.Values.FirstOrDefault(slot => slot.Panel == panel);
+    }
+
+    private void FloatDockPanel(Panel panel, DockPanelSlot sourceSlot)
+    {
+        Rectangle floatingBounds = RectangleToClient(panel.RectangleToScreen(panel.ClientRectangle));
+
+        sourceSlot.Host.Controls.Remove(panel);
+        sourceSlot.Host.Controls.Add(sourceSlot.Placeholder);
+        sourceSlot.Panel = null;
+
+        panel.Dock = DockStyle.None;
+        panel.Bounds = floatingBounds;
+        Controls.Add(panel);
+    }
+
+    private void CompleteDockPanelDrag(Panel panel)
+    {
+        Point cursorInForm = PointToClient(Cursor.Position);
+        DockPanelSlot? targetSlot = FindDockPanelDropSlot(cursorInForm) ?? _dragSourceSlot;
+        if (targetSlot is null)
+        {
+            return;
+        }
+
+        Panel? swappedPanel = targetSlot.Panel;
+        SnapDockPanelToSlot(panel, targetSlot);
+
+        if (swappedPanel is not null && swappedPanel != panel && _dragSourceSlot is not null)
+        {
+            SnapDockPanelToSlot(swappedPanel, _dragSourceSlot);
+        }
+    }
+
+    private DockPanelSlot? FindDockPanelDropSlot(Point cursorInForm)
+    {
+        DockPanelSlot? nearestOpenSlot = null;
+        double nearestOpenDistance = double.MaxValue;
+
+        foreach (DockPanelSlot slot in _dockSlotsByHost.Values)
+        {
+            Rectangle slotBounds = RectangleToClient(slot.Host.RectangleToScreen(slot.Host.ClientRectangle));
+            if (slotBounds.Contains(cursorInForm))
+            {
+                return slot;
+            }
+
+            if (slot.Panel is null)
+            {
+                double distance = GetDistanceSquared(cursorInForm, slotBounds);
+                if (distance < nearestOpenDistance)
+                {
+                    nearestOpenSlot = slot;
+                    nearestOpenDistance = distance;
+                }
+            }
+        }
+
+        return nearestOpenSlot;
+    }
+
+    private void SnapDockPanelToSlot(Panel panel, DockPanelSlot slot)
+    {
+        if (panel.Parent is not null)
+        {
+            panel.Parent.Controls.Remove(panel);
+        }
+
+        slot.Host.Controls.Remove(slot.Placeholder);
+        panel.Dock = DockStyle.Fill;
+        slot.Host.Controls.Add(panel);
+        slot.Panel = panel;
+    }
+
+    private static double GetDistanceSquared(Point point, Rectangle bounds)
+    {
+        int closestX = Math.Clamp(point.X, bounds.Left, bounds.Right);
+        int closestY = Math.Clamp(point.Y, bounds.Top, bounds.Bottom);
+        int deltaX = point.X - closestX;
+        int deltaY = point.Y - closestY;
+        return (deltaX * deltaX) + (deltaY * deltaY);
+    }
+
+    private Point ClampDockPanelLocation(Control panel, Point targetLocation)
+    {
+        int maxX = Math.Max(0, ClientSize.Width - panel.Width);
+        int maxY = Math.Max(0, ClientSize.Height - panel.Height);
+        return new Point(
+            Math.Clamp(targetLocation.X, 0, maxX),
+            Math.Clamp(targetLocation.Y, 0, maxY));
+    }
+
+
+    private sealed class DockPanelSlot
+    {
+        public DockPanelSlot(Control host, Panel panel)
+        {
+            Host = host;
+            Panel = panel;
+            Placeholder = new Panel
+            {
+                BackColor = Color.FromArgb(30, 34, 44),
+                Dock = DockStyle.Fill,
+            };
+        }
+
+        public Control Host { get; }
+
+        public Panel? Panel { get; set; }
+
+        public Panel Placeholder { get; }
     }
 
     private Control CreateInspectorPanel()

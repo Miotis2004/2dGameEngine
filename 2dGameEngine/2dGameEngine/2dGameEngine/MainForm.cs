@@ -44,17 +44,22 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _duplicateButton;
     private readonly ToolStripButton _deleteButton;
     private readonly ToolStripButton _saveSceneButton;
+    private readonly ToolStripButton _importAssetButton;
+    private readonly ToolStripButton _refreshAssetsButton;
+    private readonly ToolStripButton _validateAssetsButton;
+    private readonly PictureBox _assetPreviewBox;
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
     private Vector2 _dragOffset;
     private CreatedProject? _currentProject;
+    private AssetPipeline? _assetPipeline;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainForm"/> class.
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 12 Scene Editing Tools";
+        Text = "2dGameEngine - Phase 13 Asset Pipeline";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -113,10 +118,25 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _importAssetButton = new ToolStripButton("Import Asset")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _refreshAssetsButton = new ToolStripButton("Refresh Assets")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _validateAssetsButton = new ToolStripButton("Validate Assets")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addSpriteButton.Click += OnAddSpriteClicked;
         _duplicateButton.Click += OnDuplicateClicked;
         _deleteButton.Click += OnDeleteClicked;
         _saveSceneButton.Click += OnSaveSceneClicked;
+        _importAssetButton.Click += OnImportAssetClicked;
+        _refreshAssetsButton.Click += OnRefreshAssetsClicked;
+        _validateAssetsButton.Click += OnValidateAssetsClicked;
         toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
@@ -129,6 +149,10 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_duplicateButton);
         toolStrip.Items.Add(_deleteButton);
         toolStrip.Items.Add(_saveSceneButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_importAssetButton);
+        toolStrip.Items.Add(_refreshAssetsButton);
+        toolStrip.Items.Add(_validateAssetsButton);
 
         StatusStrip statusStrip = new();
         _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
@@ -208,6 +232,14 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             HideSelection = false,
         };
+        _projectAssetsTree.AfterSelect += OnProjectAssetSelectionChanged;
+        _assetPreviewBox = new PictureBox
+        {
+            BackColor = Color.FromArgb(20, 24, 32),
+            Dock = DockStyle.Bottom,
+            Height = 120,
+            SizeMode = PictureBoxSizeMode.Zoom,
+        };
         PopulateProjectAssetsPane(null);
 
         _consoleList = new ListBox
@@ -260,7 +292,10 @@ public sealed class MainForm : Form
         };
 
         leftSplit.Panel1.Controls.Add(CreateDockPanel("Hierarchy", _hierarchyTree));
-        leftSplit.Panel2.Controls.Add(CreateDockPanel("Project / Assets", _projectAssetsTree));
+        Panel assetsPanel = new() { Dock = DockStyle.Fill };
+        assetsPanel.Controls.Add(_projectAssetsTree);
+        assetsPanel.Controls.Add(_assetPreviewBox);
+        leftSplit.Panel2.Controls.Add(CreateDockPanel("Project / Assets", assetsPanel));
         rootSplit.Panel1.Controls.Add(leftSplit);
         rootSplit.Panel2.Controls.Add(centerRightSplit);
         centerRightSplit.Panel1.Controls.Add(bottomSplit);
@@ -296,6 +331,10 @@ public sealed class MainForm : Form
         _duplicateButton.Click -= OnDuplicateClicked;
         _deleteButton.Click -= OnDeleteClicked;
         _saveSceneButton.Click -= OnSaveSceneClicked;
+        _importAssetButton.Click -= OnImportAssetClicked;
+        _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
+        _validateAssetsButton.Click -= OnValidateAssetsClicked;
+        _projectAssetsTree.AfterSelect -= OnProjectAssetSelectionChanged;
         _hierarchyTree.AfterSelect -= OnHierarchySelectionChanged;
         _sceneEditorViewport.Paint -= OnSceneEditorPaint;
         _gameViewport.Paint -= OnGameViewportPaint;
@@ -657,6 +696,8 @@ public sealed class MainForm : Form
         try
         {
             _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName);
+            _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
+            _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Created project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
             _statusStripLabel.Text = $"Project created: {_currentProject.SafeName}";
@@ -676,7 +717,13 @@ public sealed class MainForm : Form
         {
             root.Nodes.Add(new TreeNode($"Solution: {Path.GetFileName(project.SolutionPath)}") { Tag = project.SolutionPath });
             root.Nodes.Add(new TreeNode("Scenes") { Tag = project.ScenesDirectory });
-            root.Nodes.Add(new TreeNode("Assets") { Tag = project.AssetsDirectory });
+            TreeNode assetsNode = new("Assets") { Tag = project.AssetsDirectory };
+            foreach (AssetMetadata asset in (_assetPipeline ??= new AssetPipeline(project.AssetsDirectory)).Refresh())
+            {
+                assetsNode.Nodes.Add(new TreeNode($"{asset.Kind}: {asset.RelativePath}") { Tag = asset });
+            }
+
+            root.Nodes.Add(assetsNode);
         }
         else
         {
@@ -685,6 +732,68 @@ public sealed class MainForm : Form
 
         _projectAssetsTree.Nodes.Add(root);
         root.ExpandAll();
+    }
+
+    private void OnImportAssetClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create a project before importing assets.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using OpenFileDialog dialog = new()
+        {
+            Filter = "Supported assets|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.wav;*.mp3;*.ogg;*.flac|All files|*.*",
+            Multiselect = true,
+            Title = "Import Assets",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _assetPipeline ??= new AssetPipeline(_currentProject.AssetsDirectory);
+        foreach (string fileName in dialog.FileNames)
+        {
+            AssetMetadata asset = _assetPipeline.Import(fileName);
+            LogToConsole($"Imported {asset.Kind} asset '{asset.RelativePath}' with metadata.");
+        }
+
+        PopulateProjectAssetsPane(_currentProject);
+        _statusStripLabel.Text = "Asset import complete";
+    }
+
+    private void OnRefreshAssetsClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null) return;
+        _assetPipeline ??= new AssetPipeline(_currentProject.AssetsDirectory);
+        int count = _assetPipeline.Refresh().Count;
+        PopulateProjectAssetsPane(_currentProject);
+        LogToConsole($"Refreshed {count} asset(s) and metadata files.");
+    }
+
+    private void OnValidateAssetsClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null) return;
+        _assetPipeline ??= new AssetPipeline(_currentProject.AssetsDirectory);
+        foreach (AssetValidationResult result in _assetPipeline.Validate())
+        {
+            LogToConsole($"{(result.IsValid ? "OK" : "Invalid")}: {result.Metadata.RelativePath} - {result.Message}");
+        }
+
+        PopulateProjectAssetsPane(_currentProject);
+    }
+
+    private void OnProjectAssetSelectionChanged(object? sender, TreeViewEventArgs e)
+    {
+        if (e.Node?.Tag is not AssetMetadata asset) return;
+        ShowInspector(asset);
+        _assetPreviewBox.Image?.Dispose();
+        _assetPreviewBox.Image = null;
+        if (_currentProject is not null && asset.Kind == AssetKind.Texture)
+        {
+            string fullPath = Path.Combine(_currentProject.AssetsDirectory, asset.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+            using Image image = Image.FromFile(fullPath);
+            _assetPreviewBox.Image = new Bitmap(image);
+        }
     }
 
     private void LogToConsole(string message)
@@ -723,6 +832,19 @@ public sealed class MainForm : Form
                 AddInspectorRow("Rotation", FormattableString.Invariant($"{entity.Transform.Value.Rotation:0.###} rad"));
                 AddInspectorRow("Scale", FormattableString.Invariant($"{scale.X:0.##}, {scale.Y:0.##}"));
                 AddInspectorRow("Components", entity.Components.Count.ToString());
+                break;
+            case AssetMetadata asset:
+                _inspectorHeader.Text = Path.GetFileName(asset.RelativePath);
+                AddInspectorRow("Type", $"Asset ({asset.Kind})");
+                AddInspectorRow("Path", asset.RelativePath);
+                AddInspectorRow("Metadata", asset.RelativePath + AssetMetadata.MetadataExtension);
+                AddInspectorRow("Imported", asset.ImportedAtUtc.ToLocalTime().ToString("g"));
+                if (asset.Width is not null && asset.Height is not null)
+                {
+                    AddInspectorRow("Size", $"{asset.Width} x {asset.Height}");
+                    AddInspectorRow("Slice", $"{asset.SliceWidth} x {asset.SliceHeight}");
+                }
+
                 break;
             case Component component:
                 _inspectorHeader.Text = component.GetType().Name;

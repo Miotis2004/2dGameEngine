@@ -643,6 +643,10 @@ Deliverable:
 
 Safe Play/Pause/Stop testing where runtime changes do not corrupt the open edit scene.
 
+Status:
+
+Completed. The editor now snapshots the edit scene before play, runs gameplay against an isolated runtime scene, restores the edit scene when play mode stops, supports pause and single-step simulation, reports runtime exceptions in the console, and routes keyboard/mouse input through the rendered game pane while play mode is active.
+
 ---
 
 # Coding Standards

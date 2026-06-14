@@ -31,6 +31,11 @@ public sealed class Engine
     public event EventHandler<EngineUpdatedEventArgs>? Updated;
 
     /// <summary>
+    /// Raised when a runtime update throws an exception.
+    /// </summary>
+    public event EventHandler<Exception>? ErrorOccurred;
+
+    /// <summary>
     /// Gets the active scene.
     /// </summary>
     public Scene? ActiveScene { get; private set; }
@@ -89,11 +94,37 @@ public sealed class Engine
         IsRunning = false;
     }
 
+    /// <summary>
+    /// Advances the active scene by exactly one frame while the update loop is stopped.
+    /// </summary>
+    public void Step()
+    {
+        if (IsRunning)
+        {
+            return;
+        }
+
+        UpdateFrame();
+    }
+
     private void OnUpdateTimerTick(object? sender, EventArgs args)
     {
-        Time.Update();
-        ActiveScene?.Update(Time, Input);
-        Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene, Input));
-        Input.AdvanceFrame();
+        UpdateFrame();
+    }
+
+    private void UpdateFrame()
+    {
+        try
+        {
+            Time.Update();
+            ActiveScene?.Update(Time, Input);
+            Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene, Input));
+            Input.AdvanceFrame();
+        }
+        catch (Exception ex)
+        {
+            Stop();
+            ErrorOccurred?.Invoke(this, ex);
+        }
     }
 }

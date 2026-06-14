@@ -13,7 +13,7 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 7 animation runtime demonstration.
+/// Hosts the Phase 9 editor foundation with a docked layout, scene viewport, and runtime preview controls.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -21,8 +21,14 @@ public sealed class MainForm : Form
     private readonly Engine _engine;
     private readonly Entity _demoEntity;
     private readonly RigidBody2D _demoBody;
-    private readonly Label _engineStatusLabel;
     private readonly Renderer2D _renderer;
+    private readonly TreeView _hierarchyTree;
+    private readonly ListView _inspectorList;
+    private readonly Label _inspectorHeader;
+    private readonly Label _runtimeStatusLabel;
+    private readonly Label _viewportOverlayLabel;
+    private readonly ToolStripButton _playPauseButton;
+    private readonly ToolStripStatusLabel _statusStripLabel;
     private readonly Panel _viewport;
 
     /// <summary>
@@ -30,54 +36,11 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 7 Animation";
+        Text = "2dGameEngine - Phase 9 Editor Foundation";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(720, 480);
-        ClientSize = new Size(960, 540);
+        MinimumSize = new Size(960, 600);
+        ClientSize = new Size(1280, 720);
         KeyPreview = true;
-
-        TableLayoutPanel layout = new()
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(24),
-            RowCount = 3,
-            ColumnCount = 1,
-        };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        Label titleLabel = new()
-        {
-            AutoSize = true,
-            Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 7 Animation",
-        };
-
-        _engineStatusLabel = new Label
-        {
-            AutoSize = true,
-            Font = new Font(FontFamily.GenericMonospace, 10.0f),
-            Margin = new Padding(0, 12, 0, 0),
-            Text = "Starting engine...",
-        };
-
-        _viewport = new DoubleBufferedPanel
-        {
-            BackColor = Color.Black,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 16, 0, 0),
-        };
-        _viewport.Paint += OnViewportPaint;
-        _viewport.MouseDown += OnViewportMouseDown;
-        _viewport.MouseUp += OnViewportMouseUp;
-        _viewport.MouseMove += OnViewportMouseMove;
-        _viewport.MouseWheel += OnViewportMouseWheel;
-
-        layout.Controls.Add(titleLabel, 0, 0);
-        layout.Controls.Add(_engineStatusLabel, 0, 1);
-        layout.Controls.Add(_viewport, 0, 2);
-        Controls.Add(layout);
 
         _renderer = new Renderer2D
         {
@@ -86,18 +49,191 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
-        SpriteSheetAsset tileSprites = _assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
-        AnimationClip playerIdle = _assets.LoadAnimationClip("Assets/player-idle.animation.json");
+        Scene scene = CreatePreviewScene(_assets, out _demoEntity, out _demoBody);
 
         _engine = new Engine();
-        Scene scene = new("Phase 7 Animation Demo Scene");
-        _demoEntity = scene.CreateEntity("Player Rigidbody");
-        _demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
-        _demoBody = _demoEntity.AddComponent(new RigidBody2D());
-        _demoEntity.AddComponent(new BoxCollider2D(new Vector2(64.0f, 96.0f)));
-        _demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
-        _demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
-        _demoEntity.AddComponent(new AnimationPlayer(playerIdle));
+        _engine.SetActiveScene(scene);
+        _engine.Updated += OnEngineUpdated;
+
+        ToolStrip toolStrip = new()
+        {
+            GripStyle = ToolStripGripStyle.Hidden,
+        };
+        _playPauseButton = new ToolStripButton("Pause Preview")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _playPauseButton.Click += OnPlayPauseClicked;
+        toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_playPauseButton);
+        toolStrip.Items.Add(new ToolStripLabel("Scene Preview"));
+
+        StatusStrip statusStrip = new();
+        _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
+        statusStrip.Items.Add(_statusStripLabel);
+
+        _hierarchyTree = new TreeView
+        {
+            Dock = DockStyle.Fill,
+            HideSelection = false,
+        };
+        _hierarchyTree.AfterSelect += OnHierarchySelectionChanged;
+
+        _inspectorHeader = new Label
+        {
+            AutoEllipsis = true,
+            Dock = DockStyle.Top,
+            Font = new Font(Font.FontFamily, 11.0f, FontStyle.Bold),
+            Height = 36,
+            Padding = new Padding(8, 10, 8, 0),
+            Text = "Inspector",
+        };
+        _inspectorList = new ListView
+        {
+            Dock = DockStyle.Fill,
+            FullRowSelect = true,
+            GridLines = true,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            View = View.Details,
+        };
+        _inspectorList.Columns.Add("Property", 130);
+        _inspectorList.Columns.Add("Value", 220);
+
+        _runtimeStatusLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font(FontFamily.GenericMonospace, 9.5f),
+            Padding = new Padding(8),
+            Text = "Starting runtime preview...",
+        };
+
+        _viewport = new DoubleBufferedPanel
+        {
+            BackColor = Color.Black,
+            Dock = DockStyle.Fill,
+        };
+        _viewport.Paint += OnViewportPaint;
+        _viewport.MouseDown += OnViewportMouseDown;
+        _viewport.MouseUp += OnViewportMouseUp;
+        _viewport.MouseMove += OnViewportMouseMove;
+        _viewport.MouseWheel += OnViewportMouseWheel;
+
+        _viewportOverlayLabel = new Label
+        {
+            AutoSize = false,
+            BackColor = Color.FromArgb(170, 20, 24, 32),
+            Dock = DockStyle.Top,
+            ForeColor = Color.White,
+            Height = 42,
+            Padding = new Padding(10, 6, 10, 4),
+            Text = "Scene Viewport - live runtime preview (A/D or arrows to move, Space/W/Up to jump, mouse tracked)",
+        };
+        _viewport.Controls.Add(_viewportOverlayLabel);
+
+        SplitContainer rootSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            SplitterDistance = 260,
+        };
+
+        SplitContainer centerSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel2,
+            SplitterDistance = 760,
+        };
+
+        SplitContainer viewportRuntimeSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel2,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 470,
+        };
+
+        rootSplit.Panel1.Controls.Add(CreateDockPanel("Hierarchy", _hierarchyTree));
+        rootSplit.Panel2.Controls.Add(centerSplit);
+        centerSplit.Panel1.Controls.Add(viewportRuntimeSplit);
+        centerSplit.Panel2.Controls.Add(CreateInspectorPanel());
+        viewportRuntimeSplit.Panel1.Controls.Add(CreateDockPanel("Viewport", _viewport));
+        viewportRuntimeSplit.Panel2.Controls.Add(CreateDockPanel("Runtime Preview", _runtimeStatusLabel));
+
+        Controls.Add(rootSplit);
+        Controls.Add(statusStrip);
+        Controls.Add(toolStrip);
+
+        PopulateHierarchy(scene);
+        KeyDown += OnFormKeyDown;
+        KeyUp += OnFormKeyUp;
+
+        _engine.Start();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _engine.Stop();
+        _engine.Updated -= OnEngineUpdated;
+        KeyDown -= OnFormKeyDown;
+        KeyUp -= OnFormKeyUp;
+        _playPauseButton.Click -= OnPlayPauseClicked;
+        _hierarchyTree.AfterSelect -= OnHierarchySelectionChanged;
+        _viewport.Paint -= OnViewportPaint;
+        _viewport.MouseDown -= OnViewportMouseDown;
+        _viewport.MouseUp -= OnViewportMouseUp;
+        _viewport.MouseMove -= OnViewportMouseMove;
+        _viewport.MouseWheel -= OnViewportMouseWheel;
+        _assets.Dispose();
+        base.OnFormClosed(e);
+    }
+
+    private static Panel CreateDockPanel(string title, Control content)
+    {
+        Panel panel = new()
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(1),
+        };
+        Label header = new()
+        {
+            BackColor = Color.FromArgb(38, 44, 56),
+            Dock = DockStyle.Top,
+            ForeColor = Color.White,
+            Height = 28,
+            Padding = new Padding(8, 6, 8, 0),
+            Text = title,
+        };
+        content.Dock = DockStyle.Fill;
+        panel.Controls.Add(content);
+        panel.Controls.Add(header);
+        return panel;
+    }
+
+    private Control CreateInspectorPanel()
+    {
+        Panel panel = new()
+        {
+            Dock = DockStyle.Fill,
+        };
+        panel.Controls.Add(_inspectorList);
+        panel.Controls.Add(_inspectorHeader);
+        return CreateDockPanel("Inspector", panel);
+    }
+
+    private static Scene CreatePreviewScene(AssetManager assets, out Entity demoEntity, out RigidBody2D demoBody)
+    {
+        SpriteSheetAsset tileSprites = assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
+        AnimationClip playerIdle = assets.LoadAnimationClip("Assets/player-idle.animation.json");
+
+        Scene scene = new("Phase 9 Editor Preview Scene");
+        demoEntity = scene.CreateEntity("Player Rigidbody");
+        demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
+        demoBody = demoEntity.AddComponent(new RigidBody2D());
+        demoEntity.AddComponent(new BoxCollider2D(new Vector2(64.0f, 96.0f)));
+        demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
+        demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
+        demoEntity.AddComponent(new AnimationPlayer(playerIdle));
 
         Entity level = scene.CreateEntity("Tilemap Level");
         level.Transform.Value.Position = new Vector2(-384.0f, -96.0f);
@@ -126,28 +262,85 @@ public sealed class MainForm : Form
         }
 
         level.AddComponent(new TilemapCollider2D());
-
-        _engine.SetActiveScene(scene);
-        _engine.Updated += OnEngineUpdated;
-        KeyDown += OnFormKeyDown;
-        KeyUp += OnFormKeyUp;
-
-        _engine.Start();
+        return scene;
     }
 
-    protected override void OnFormClosed(FormClosedEventArgs e)
+    private void PopulateHierarchy(Scene scene)
     {
-        _engine.Stop();
-        _engine.Updated -= OnEngineUpdated;
-        KeyDown -= OnFormKeyDown;
-        KeyUp -= OnFormKeyUp;
-        _viewport.Paint -= OnViewportPaint;
-        _viewport.MouseDown -= OnViewportMouseDown;
-        _viewport.MouseUp -= OnViewportMouseUp;
-        _viewport.MouseMove -= OnViewportMouseMove;
-        _viewport.MouseWheel -= OnViewportMouseWheel;
-        _assets.Dispose();
-        base.OnFormClosed(e);
+        _hierarchyTree.BeginUpdate();
+        _hierarchyTree.Nodes.Clear();
+        TreeNode sceneNode = new(scene.Name)
+        {
+            Tag = scene,
+        };
+
+        foreach (Entity entity in scene.Entities)
+        {
+            TreeNode entityNode = new(entity.Name)
+            {
+                Tag = entity,
+            };
+
+            foreach (Component component in entity.Components)
+            {
+                entityNode.Nodes.Add(new TreeNode(component.GetType().Name)
+                {
+                    Tag = component,
+                });
+            }
+
+            sceneNode.Nodes.Add(entityNode);
+        }
+
+        _hierarchyTree.Nodes.Add(sceneNode);
+        sceneNode.ExpandAll();
+        _hierarchyTree.SelectedNode = sceneNode.Nodes.Count > 0 ? sceneNode.Nodes[0] : sceneNode;
+        _hierarchyTree.EndUpdate();
+    }
+
+    private void OnHierarchySelectionChanged(object? sender, TreeViewEventArgs e)
+    {
+        ShowInspector(e.Node?.Tag);
+    }
+
+    private void ShowInspector(object? selected)
+    {
+        _inspectorList.Items.Clear();
+
+        switch (selected)
+        {
+            case Scene scene:
+                _inspectorHeader.Text = scene.Name;
+                AddInspectorRow("Type", "Scene");
+                AddInspectorRow("Entities", scene.Entities.Count.ToString());
+                break;
+            case Entity entity:
+                Vector2 position = entity.Transform.Value.Position;
+                Vector2 scale = entity.Transform.Value.Scale;
+                _inspectorHeader.Text = entity.Name;
+                AddInspectorRow("Type", "Entity");
+                AddInspectorRow("Enabled", entity.IsEnabled.ToString());
+                AddInspectorRow("Position", FormattableString.Invariant($"{position.X:0.##}, {position.Y:0.##}"));
+                AddInspectorRow("Rotation", FormattableString.Invariant($"{entity.Transform.Value.Rotation:0.###} rad"));
+                AddInspectorRow("Scale", FormattableString.Invariant($"{scale.X:0.##}, {scale.Y:0.##}"));
+                AddInspectorRow("Components", entity.Components.Count.ToString());
+                break;
+            case Component component:
+                _inspectorHeader.Text = component.GetType().Name;
+                AddInspectorRow("Type", component.GetType().Name);
+                AddInspectorRow("Enabled", component.IsEnabled.ToString());
+                AddInspectorRow("Entity", component.Entity?.Name ?? "<detached>");
+                break;
+            default:
+                _inspectorHeader.Text = "Inspector";
+                AddInspectorRow("Selection", "None");
+                break;
+        }
+    }
+
+    private void AddInspectorRow(string name, string value)
+    {
+        _inspectorList.Items.Add(new ListViewItem(new[] { name, value }));
     }
 
     private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
@@ -155,15 +348,33 @@ public sealed class MainForm : Form
         Vector2 position = _demoEntity.Transform.Value.Position;
         InputState input = args.Input;
         Point mouseDelta = input.MouseDelta;
-        _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nAnimation: Player Idle ({input.MouseWheelDelta:+0;-0;0} wheel this frame)\nMove: A/D or Left/Right, Jump: Space/W/Up, animated sprite plays from JSON clip metadata\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+        string sceneName = args.Scene?.Name ?? "<none>";
+        string runtimeState = _engine.IsRunning ? "Playing" : "Paused";
 
+        _runtimeStatusLabel.Text = FormattableString.Invariant(
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+        _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()}");
         _viewport.Invalidate();
     }
 
     private void OnViewportPaint(object? sender, PaintEventArgs e)
     {
         _renderer.Render(e.Graphics, _engine.ActiveScene, _viewport.ClientSize);
+    }
+
+    private void OnPlayPauseClicked(object? sender, EventArgs e)
+    {
+        if (_engine.IsRunning)
+        {
+            _engine.Stop();
+            _playPauseButton.Text = "Play Preview";
+            _statusStripLabel.Text = "Runtime preview paused";
+            return;
+        }
+
+        _engine.Start();
+        _playPauseButton.Text = "Pause Preview";
+        _statusStripLabel.Text = "Runtime preview playing";
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)

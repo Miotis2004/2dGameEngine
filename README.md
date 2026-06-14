@@ -472,6 +472,19 @@ Deliverable:
 
 Visual scene preview inside the editor.
 
+Status:
+
+Completed. The application now starts as an editor foundation shell with docked hierarchy, viewport, inspector, and runtime preview panels. The viewport renders the live Phase 9 preview scene through the runtime renderer while toolbar controls allow the preview loop to be paused and resumed.
+
+Verification:
+
+* The main window is branded as the Phase 9 editor foundation.
+* A docked layout separates scene hierarchy, viewport, inspector, and runtime preview output.
+* The hierarchy lists the active scene, entities, and components.
+* The inspector displays details for the selected scene, entity, or component.
+* The scene viewport renders the live runtime preview scene.
+* The toolbar exposes play/pause controls for the runtime preview.
+
 ---
 
 # Phase 10: Platformer Validation Project

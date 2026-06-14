@@ -59,6 +59,8 @@ public sealed class MainForm : Form
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
     private Vector2 _dragOffset;
+    private Panel? _draggedDockPanel;
+    private Point _panelDragOffset;
     private CreatedProject? _currentProject;
     private AssetPipeline? _assetPipeline;
     private Scene _editScene = null!;
@@ -412,7 +414,7 @@ public sealed class MainForm : Form
         base.OnFormClosed(e);
     }
 
-    private static Panel CreateDockPanel(string title, Control content)
+    private Panel CreateDockPanel(string title, Control content)
     {
         Panel panel = new()
         {
@@ -422,16 +424,91 @@ public sealed class MainForm : Form
         Label header = new()
         {
             BackColor = Color.FromArgb(38, 44, 56),
+            Cursor = Cursors.SizeAll,
             Dock = DockStyle.Top,
             ForeColor = Color.White,
             Height = 28,
             Padding = new Padding(8, 6, 8, 0),
             Text = title,
         };
+        header.MouseDown += OnDockPanelHeaderMouseDown;
+        header.MouseMove += OnDockPanelHeaderMouseMove;
+        header.MouseUp += OnDockPanelHeaderMouseUp;
         content.Dock = DockStyle.Fill;
         panel.Controls.Add(content);
         panel.Controls.Add(header);
         return panel;
+    }
+
+
+    private void OnDockPanelHeaderMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || sender is not Control header || header.Parent is not Panel panel)
+        {
+            return;
+        }
+
+        BeginDockPanelDrag(panel, header, e.Location);
+    }
+
+    private void OnDockPanelHeaderMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (_draggedDockPanel is null || sender is not Control header || !header.Capture)
+        {
+            return;
+        }
+
+        Point cursorInForm = PointToClient(header.PointToScreen(e.Location));
+        Point targetLocation = new(cursorInForm.X - _panelDragOffset.X, cursorInForm.Y - _panelDragOffset.Y);
+        _draggedDockPanel.Location = ClampDockPanelLocation(_draggedDockPanel, targetLocation);
+    }
+
+    private void OnDockPanelHeaderMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (sender is Control header)
+        {
+            header.Capture = false;
+        }
+
+        _draggedDockPanel = null;
+    }
+
+    private void BeginDockPanelDrag(Panel panel, Control header, Point headerMouseLocation)
+    {
+        _draggedDockPanel = panel;
+        _panelDragOffset = panel.PointToClient(header.PointToScreen(headerMouseLocation));
+
+        if (panel.Parent != this)
+        {
+            Control originalParent = panel.Parent ?? throw new InvalidOperationException("Dock panel cannot be dragged without a parent.");
+            int originalIndex = originalParent.Controls.GetChildIndex(panel);
+            Rectangle floatingBounds = RectangleToClient(panel.RectangleToScreen(panel.ClientRectangle));
+
+            Panel placeholder = new()
+            {
+                BackColor = Color.FromArgb(30, 34, 44),
+                Dock = DockStyle.Fill,
+            };
+            originalParent.Controls.Remove(panel);
+            originalParent.Controls.Add(placeholder);
+            originalParent.Controls.SetChildIndex(placeholder, originalIndex);
+
+            panel.Dock = DockStyle.None;
+            panel.Bounds = floatingBounds;
+            Controls.Add(panel);
+        }
+
+        panel.BringToFront();
+        header.Capture = true;
+    }
+
+    private Point ClampDockPanelLocation(Control panel, Point targetLocation)
+    {
+        int maxX = Math.Max(0, ClientSize.Width - panel.Width);
+        int maxY = Math.Max(0, ClientSize.Height - panel.Height);
+        return new Point(
+            Math.Clamp(targetLocation.X, 0, maxX),
+            Math.Clamp(targetLocation.Y, 0, maxY));
     }
 
     private Control CreateInspectorPanel()

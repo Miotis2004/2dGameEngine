@@ -36,6 +36,7 @@ public static class EditorProjectScaffolder
 
         Directory.CreateDirectory(coreDirectory);
         Directory.CreateDirectory(gameDirectory);
+        Directory.CreateDirectory(Path.Combine(gameDirectory, "Scripts"));
         Directory.CreateDirectory(editorDirectory);
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Sprites"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Audio"));
@@ -52,6 +53,7 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(coreDirectory, "GameSettings.cs"), CreateGameSettings(safeName, projectName));
         WriteFile(Path.Combine(gameDirectory, $"{safeName}.Game.csproj"), CreateGameProject(safeName));
         WriteFile(Path.Combine(gameDirectory, "GameBootstrapper.cs"), CreateGameBootstrapper(safeName));
+        WriteFile(Path.Combine(gameDirectory, "Scripts", "PlayerController.cs"), CreateStarterScript(safeName));
         WriteFile(Path.Combine(editorDirectory, $"{safeName}.Editor.csproj"), CreateEditorProject(safeName));
         WriteFile(Path.Combine(editorDirectory, "Program.cs"), CreateEditorProgram(safeName));
         WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(projectName));
@@ -178,6 +180,27 @@ public static class GameBootstrapper
 }
 """;
 
+    private static string CreateStarterScript(string safeName) => $$"""
+using {{safeName}}.Core;
+
+namespace {{safeName}}.Game.Scripts;
+
+public sealed class PlayerController
+{
+    public string DisplayName { get; set; } = "Player Controller";
+
+    public void Start()
+    {
+        // Initialize authored gameplay state here.
+    }
+
+    public void Update(float deltaTime)
+    {
+        // Add player behavior here.
+    }
+}
+""";
+
     private static string CreateEditorProgram(string safeName) => $$"""
 using {{safeName}}.Game;
 
@@ -192,7 +215,7 @@ Created with 2dGameEngine.
 
 ## Structure
 
-* `src` - C# solution projects for core gameplay, game code, and editor host.
+* `src` - C# solution projects for core gameplay, game code, editor host, and authored scripts.
 * `Assets` - Imported game content.
 * `Scenes` - Scene files.
 """;

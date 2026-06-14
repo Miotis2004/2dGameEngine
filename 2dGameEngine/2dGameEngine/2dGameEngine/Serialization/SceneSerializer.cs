@@ -10,6 +10,7 @@ using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Physics;
+using _2dGameEngine.Scripting;
 
 namespace _2dGameEngine.Serialization;
 
@@ -127,6 +128,7 @@ public static class SceneSerializer
             PlatformerMovementComponent platformer => new ComponentDocument("PlatformerMovement", MoveSpeed: platformer.MoveSpeed, JumpSpeed: platformer.JumpSpeed),
             AnimationPlayer animation => ToAnimationPlayerDocument(animation),
             Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
+            AuthoredScriptComponent script => new ComponentDocument("AuthoredScript", ScriptClass: script.ClassName, ScriptPath: script.ScriptPath, ScriptDescription: script.Description, ScriptProperties: script.Properties.OrderBy(pair => pair.Key).Select(pair => new ScriptPropertyDocument(pair.Key, pair.Value)).ToArray()),
             _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
         };
 
@@ -156,8 +158,29 @@ public static class SceneSerializer
             "PlatformerMovement" => new PlatformerMovementComponent(document.MoveSpeed ?? 0.0f, document.JumpSpeed ?? 0.0f),
             "AnimationPlayer" => CreateAnimationPlayer(document, assets),
             "Tilemap" => CreateTilemap(document, assets),
+            "AuthoredScript" => CreateAuthoredScript(document),
             _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
         };
+    }
+
+    private static AuthoredScriptComponent CreateAuthoredScript(ComponentDocument document)
+    {
+        if (string.IsNullOrWhiteSpace(document.ScriptClass) || string.IsNullOrWhiteSpace(document.ScriptPath))
+        {
+            throw new InvalidDataException("Serialized authored scripts must specify scriptClass and scriptPath.");
+        }
+
+        AuthoredScriptComponent script = new(document.ScriptClass, document.ScriptPath)
+        {
+            Description = document.ScriptDescription ?? "Authored gameplay script",
+        };
+
+        foreach (ScriptPropertyDocument property in document.ScriptProperties ?? [])
+        {
+            script.Properties[property.Name] = property.Value;
+        }
+
+        return script;
     }
 
     private static SpriteRenderer CreateSpriteRenderer(ComponentDocument document, AssetManager? assets)
@@ -317,6 +340,8 @@ public static class SceneSerializer
 
     private sealed record TileDefinitionDocument(int Id, string Color, bool IsSolid, FrameReferenceDocument? Frame);
 
+    private sealed record ScriptPropertyDocument(string Name, string Value);
+
     private sealed record ComponentDocument(
         string Type,
         bool IsEnabled = true,
@@ -340,5 +365,9 @@ public static class SceneSerializer
         int? Height = null,
         Vector2Document? TileSize = null,
         TileDefinitionDocument[]? Definitions = null,
-        string[]? Tiles = null);
+        string[]? Tiles = null,
+        string? ScriptClass = null,
+        string? ScriptPath = null,
+        string? ScriptDescription = null,
+        ScriptPropertyDocument[]? ScriptProperties = null);
 }

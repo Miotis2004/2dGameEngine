@@ -127,6 +127,7 @@ public static class SceneSerializer
             TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger),
             PlatformerMovementComponent platformer => new ComponentDocument("PlatformerMovement", MoveSpeed: platformer.MoveSpeed, JumpSpeed: platformer.JumpSpeed),
             AnimationPlayer animation => ToAnimationPlayerDocument(animation),
+            Animator animator => ToAnimatorDocument(animator),
             Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
             AuthoredScriptComponent script => new ComponentDocument("AuthoredScript", ScriptClass: script.ClassName, ScriptPath: script.ScriptPath, ScriptDescription: script.Description, ScriptProperties: script.Properties.OrderBy(pair => pair.Key).Select(pair => new ScriptPropertyDocument(pair.Key, pair.Value)).ToArray()),
             _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
@@ -145,6 +146,16 @@ public static class SceneSerializer
         return new ComponentDocument("AnimationPlayer", AnimationClip: animation.Clip.AssetPath, PlaybackSpeed: animation.PlaybackSpeed, IsPlaying: animation.IsPlaying);
     }
 
+    private static ComponentDocument ToAnimatorDocument(Animator animator)
+    {
+        if (string.IsNullOrWhiteSpace(animator.Controller.AssetPath))
+        {
+            throw new NotSupportedException("Animators can only be serialized when their controller was loaded by AssetManager.");
+        }
+
+        return new ComponentDocument("Animator", AnimatorController: animator.Controller.AssetPath, PlaybackSpeed: animator.PlaybackSpeed);
+    }
+
     private static Component CreateComponent(ComponentDocument document, AssetManager? assets)
     {
         return document.Type switch
@@ -157,6 +168,7 @@ public static class SceneSerializer
             "TilemapCollider2D" => new TilemapCollider2D { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
             "PlatformerMovement" => new PlatformerMovementComponent(document.MoveSpeed ?? 0.0f, document.JumpSpeed ?? 0.0f),
             "AnimationPlayer" => CreateAnimationPlayer(document, assets),
+            "Animator" => CreateAnimator(document, assets),
             "Tilemap" => CreateTilemap(document, assets),
             "AuthoredScript" => CreateAuthoredScript(document),
             _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
@@ -219,6 +231,24 @@ public static class SceneSerializer
         }
 
         return player;
+    }
+
+    private static Animator CreateAnimator(ComponentDocument document, AssetManager? assets)
+    {
+        if (string.IsNullOrWhiteSpace(document.AnimatorController))
+        {
+            throw new InvalidDataException("Serialized animators must specify an animator controller asset path.");
+        }
+
+        if (assets is null)
+        {
+            throw new InvalidDataException("Scene contains animator controller references, but no AssetManager was provided.");
+        }
+
+        return new Animator(assets.LoadAnimatorController(document.AnimatorController))
+        {
+            PlaybackSpeed = document.PlaybackSpeed ?? 1.0f,
+        };
     }
 
     private static Tilemap CreateTilemap(ComponentDocument document, AssetManager? assets)
@@ -361,6 +391,7 @@ public static class SceneSerializer
         float? MoveSpeed = null,
         float? JumpSpeed = null,
         string? AnimationClip = null,
+        string? AnimatorController = null,
         float? PlaybackSpeed = null,
         bool? IsPlaying = null,
         int? Width = null,

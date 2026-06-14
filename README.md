@@ -690,6 +690,10 @@ Deliverable:
 
 A complete 2D animation authoring workflow that can build reusable clips and animator controllers for gameplay entities.
 
+Status:
+
+Completed. Phase 17 adds runtime-ready animation timelines, clip events, animator controllers, state transitions, parameters, scene serialization, and asset loading so editor-authored animation data can drive gameplay entities.
+
 ---
 
 # Phase 18: Prefabs, Variants, and Nested Composition

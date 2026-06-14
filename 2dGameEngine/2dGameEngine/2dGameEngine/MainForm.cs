@@ -44,6 +44,8 @@ public sealed class MainForm : Form
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
     private readonly ToolStripButton _addSpriteButton;
+    private readonly ToolStripButton _addTilemapButton;
+    private readonly ToolStripButton _tilePaintButton;
     private readonly ToolStripButton _duplicateButton;
     private readonly ToolStripButton _deleteButton;
     private readonly ToolStripButton _saveSceneButton;
@@ -54,11 +56,14 @@ public sealed class MainForm : Form
     private readonly ToolStripDropDownButton _addComponentButton;
     private readonly ToolStripButton _newScriptButton;
     private readonly PictureBox _assetPreviewBox;
+    private readonly ListBox _tilePaletteList;
     private readonly ContextMenuStrip _sceneContextMenu;
     private readonly ContextMenuStrip _hierarchyContextMenu;
     private Point _lastSceneContextPoint;
     private Entity? _selectedEntity;
     private bool _isDraggingSelection;
+    private bool _isTilePaintMode;
+    private int _selectedTileId = 1;
     private Vector2 _dragOffset;
     private readonly HashSet<Panel> _dockPanels = new();
     private readonly Dictionary<Control, DockPanelSlot> _dockSlotsByHost = new();
@@ -135,6 +140,15 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _addTilemapButton = new ToolStripButton("Add Tilemap")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _tilePaintButton = new ToolStripButton("Tile Paint")
+        {
+            CheckOnClick = true,
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _duplicateButton = new ToolStripButton("Duplicate")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -179,6 +193,8 @@ public sealed class MainForm : Form
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
         _addSpriteButton.Click += OnAddSpriteClicked;
+        _addTilemapButton.Click += OnAddTilemapClicked;
+        _tilePaintButton.Click += OnTilePaintClicked;
         _duplicateButton.Click += OnDuplicateClicked;
         _deleteButton.Click += OnDeleteClicked;
         _saveSceneButton.Click += OnSaveSceneClicked;
@@ -198,6 +214,8 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_stepButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_addSpriteButton);
+        toolStrip.Items.Add(_addTilemapButton);
+        toolStrip.Items.Add(_tilePaintButton);
         toolStrip.Items.Add(_duplicateButton);
         toolStrip.Items.Add(_deleteButton);
         toolStrip.Items.Add(_saveSceneButton);
@@ -300,6 +318,13 @@ public sealed class MainForm : Form
             Height = 120,
             SizeMode = PictureBoxSizeMode.Zoom,
         };
+        _tilePaletteList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font(FontFamily.GenericMonospace, 9.0f),
+        };
+        _tilePaletteList.SelectedIndexChanged += OnTilePaletteSelectionChanged;
+        PopulateTilePalette(null);
         PopulateProjectAssetsPane(null);
 
         _consoleList = new ListBox
@@ -361,7 +386,15 @@ public sealed class MainForm : Form
         centerRightSplit.Panel1.Controls.Add(bottomSplit);
         centerRightSplit.Panel2.Controls.Add(inspectorConsoleSplit);
         bottomSplit.Panel1.Controls.Add(editorGameSplit);
-        bottomSplit.Panel2.Controls.Add(CreateDockPanel("Runtime Status", _runtimeStatusLabel));
+        SplitContainer statusTileSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            SplitterDistance = 360,
+        };
+        statusTileSplit.Panel1.Controls.Add(CreateDockPanel("Runtime Status", _runtimeStatusLabel));
+        statusTileSplit.Panel2.Controls.Add(CreateDockPanel("Tile Palette", _tilePaletteList));
+        bottomSplit.Panel2.Controls.Add(statusTileSplit);
         editorGameSplit.Panel1.Controls.Add(CreateDockPanel("Scene Editor", _sceneEditorViewport));
         editorGameSplit.Panel2.Controls.Add(CreateDockPanel("Rendered Game", _gameViewport));
         inspectorConsoleSplit.Panel1.Controls.Add(CreateInspectorPanel());
@@ -391,6 +424,9 @@ public sealed class MainForm : Form
         _stopButton.Click -= OnStopClicked;
         _stepButton.Click -= OnStepClicked;
         _addSpriteButton.Click -= OnAddSpriteClicked;
+        _addTilemapButton.Click -= OnAddTilemapClicked;
+        _tilePaintButton.Click -= OnTilePaintClicked;
+        _tilePaletteList.SelectedIndexChanged -= OnTilePaletteSelectionChanged;
         _duplicateButton.Click -= OnDuplicateClicked;
         _deleteButton.Click -= OnDeleteClicked;
         _saveSceneButton.Click -= OnSaveSceneClicked;
@@ -654,6 +690,7 @@ public sealed class MainForm : Form
         menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, _lastSceneContextPoint)));
+        menu.Items.Add(CreateMenuItem("Add Tilemap", (_, _) => AddTilemap(_lastSceneContextPoint)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateMenuItem("Duplicate Selected", OnDuplicateClicked));
         menu.Items.Add(CreateMenuItem("Delete Selected", OnDeleteClicked));
@@ -675,6 +712,7 @@ public sealed class MainForm : Form
         menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, Point.Empty)));
+        menu.Items.Add(CreateMenuItem("Add Tilemap", (_, _) => AddTilemap(Point.Empty)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateMenuItem("Duplicate", OnDuplicateClicked));
         menu.Items.Add(CreateMenuItem("Delete", OnDeleteClicked));
@@ -936,6 +974,74 @@ public sealed class MainForm : Form
         _ => Color.MediumPurple,
     };
 
+
+    private void OnAddTilemapClicked(object? sender, EventArgs e)
+    {
+        AddTilemap(Point.Empty);
+    }
+
+    private void OnTilePaintClicked(object? sender, EventArgs e)
+    {
+        _isTilePaintMode = _tilePaintButton.Checked && _selectedEntity?.GetComponent<Tilemap>() is not null;
+        _statusStripLabel.Text = _isTilePaintMode ? "Tile paint mode: left paints, right erases" : "Tile paint mode disabled";
+        _sceneEditorViewport.Invalidate();
+    }
+
+    private void OnTilePaletteSelectionChanged(object? sender, EventArgs e)
+    {
+        if (_tilePaletteList.SelectedItem is TilePaletteItem item)
+        {
+            _selectedTileId = item.TileId;
+            _statusStripLabel.Text = $"Selected tile {item.TileId}: {item.Name}";
+        }
+    }
+
+    private void AddTilemap(Point viewportPoint)
+    {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Tilemap Level"));
+        entity.Transform.Value.Position = viewportPoint == Point.Empty ? _renderer.Camera.Position - new Vector2(320.0f, 160.0f) : ScreenToWorld(viewportPoint, _sceneEditorViewport.ClientSize);
+        Tilemap tilemap = entity.AddComponent(new Tilemap(20, 12, new Vector2(32.0f, 32.0f)) { SortingOrder = -5 });
+        AddDefaultTileDefinitions(tilemap);
+        entity.AddComponent(new TilemapCollider2D());
+        PopulateTilePalette(tilemap);
+        PopulateHierarchy(_editScene);
+        SelectEntity(entity);
+        _tilePaintButton.Checked = true;
+        _isTilePaintMode = true;
+        LogToConsole($"Added editable tilemap '{entity.Name}'.");
+    }
+
+    private static void AddDefaultTileDefinitions(Tilemap tilemap)
+    {
+        tilemap.SetDefinition(new TileDefinition(1, Color.ForestGreen, true));
+        tilemap.SetDefinition(new TileDefinition(2, Color.SaddleBrown, true));
+        tilemap.SetDefinition(new TileDefinition(3, Color.Orange, true));
+        tilemap.SetDefinition(new TileDefinition(4, Color.DeepSkyBlue, false));
+    }
+
+    private void PopulateTilePalette(Tilemap? tilemap)
+    {
+        _tilePaletteList.Items.Clear();
+        _tilePaletteList.Items.Add(new TilePaletteItem(0, "Eraser / Empty"));
+        foreach (TileDefinition definition in (tilemap?.Definitions.Values ?? Enumerable.Empty<TileDefinition>()).OrderBy(definition => definition.Id))
+        {
+            _tilePaletteList.Items.Add(new TilePaletteItem(definition.Id, definition.IsSolid ? "Solid" : "Decor"));
+        }
+
+        _tilePaletteList.SelectedIndex = _tilePaletteList.Items.Count > 1 ? 1 : 0;
+    }
+
     private void OnDuplicateClicked(object? sender, EventArgs e)
     {
         if (!EnsureEditMode())
@@ -1105,11 +1211,33 @@ public sealed class MainForm : Form
             EntityInputMovementComponent movement => new EntityInputMovementComponent(movement.Speed),
             PlatformerMovementComponent platformer => new PlatformerMovementComponent(platformer.MoveSpeed, platformer.JumpSpeed),
             TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger },
+            Tilemap tilemap => CloneTilemap(tilemap),
             AuthoredScriptComponent script => new AuthoredScriptComponent(script.ClassName, script.ScriptPath) { Description = script.Description },
             _ => null,
         };
     }
 
+
+
+    private static Tilemap CloneTilemap(Tilemap source)
+    {
+        Tilemap clone = new(source.Width, source.Height, source.TileSize)
+        {
+            SortingOrder = source.SortingOrder,
+        };
+        foreach (TileDefinition definition in source.Definitions.Values)
+        {
+            clone.SetDefinition(new TileDefinition(definition.Id, definition.Color, definition.IsSolid) { Frame = definition.Frame });
+        }
+        for (int y = 0; y < source.Height; y++)
+        {
+            for (int x = 0; x < source.Width; x++)
+            {
+                clone.SetTile(x, y, source.GetTile(x, y));
+            }
+        }
+        return clone;
+    }
 
     private void OnAddComponentRecipeClicked(object? sender, EventArgs e)
     {
@@ -1315,6 +1443,8 @@ public sealed class MainForm : Form
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         ShowInspector(e.Node?.Tag);
+        PopulateTilePalette(_selectedEntity?.GetComponent<Tilemap>());
+        UpdatePlayModeControls();
         _sceneEditorViewport.Invalidate();
     }
 
@@ -1361,6 +1491,15 @@ public sealed class MainForm : Form
                 AddInspectorRow("Entity", script.Entity?.Name ?? "<detached>");
                 AddInspectorRow("Source", script.ScriptPath);
                 AddInspectorRow("Properties", script.Properties.Count.ToString());
+                break;
+            case Tilemap tilemap:
+                _inspectorHeader.Text = "Tilemap";
+                AddInspectorRow("Type", "Tilemap");
+                AddInspectorRow("Enabled", tilemap.IsEnabled.ToString());
+                AddInspectorRow("Size", $"{tilemap.Width} x {tilemap.Height}");
+                AddInspectorRow("Tile Size", FormattableString.Invariant($"{tilemap.TileSize.X:0.##}, {tilemap.TileSize.Y:0.##}"));
+                AddInspectorRow("Definitions", tilemap.Definitions.Count.ToString());
+                AddInspectorRow("Sorting Order", tilemap.SortingOrder.ToString());
                 break;
             case Component component:
                 _inspectorHeader.Text = component.GetType().Name;
@@ -1418,6 +1557,7 @@ public sealed class MainForm : Form
         DrawViewportGrid(e.Graphics, _sceneEditorViewport.ClientSize);
         _renderer.Render(e.Graphics, _engine.ActiveScene, _sceneEditorViewport.ClientSize);
         DrawSelectionOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
+        DrawTilemapEditingOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
     }
 
     private void OnGameViewportPaint(object? sender, PaintEventArgs e)
@@ -1541,6 +1681,13 @@ public sealed class MainForm : Form
         _stopButton.Enabled = _isPlayMode || _engine.IsRunning;
         _stepButton.Enabled = !_engine.IsRunning;
         _addSpriteButton.Enabled = !_isPlayMode;
+        _addTilemapButton.Enabled = !_isPlayMode;
+        _tilePaintButton.Enabled = !_isPlayMode && _selectedEntity?.GetComponent<Tilemap>() is not null;
+        if (!_tilePaintButton.Enabled)
+        {
+            _tilePaintButton.Checked = false;
+            _isTilePaintMode = false;
+        }
         _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _saveSceneButton.Enabled = !_isPlayMode;
@@ -1589,6 +1736,12 @@ public sealed class MainForm : Form
         if (sender == _sceneEditorViewport && !_isPlayMode)
         {
             Vector2 world = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize);
+            if (_isTilePaintMode && _selectedEntity?.GetComponent<Tilemap>() is Tilemap activeTilemap && (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right))
+            {
+                PaintTile(activeTilemap, world, e.Button == MouseButtons.Right ? 0 : _selectedTileId);
+                return;
+            }
+
             Entity? hit = HitTestEntity(world);
             SelectEntity(hit);
             if (e.Button == MouseButtons.Left && hit is not null)
@@ -1624,6 +1777,12 @@ public sealed class MainForm : Form
             _engine.Input.SetMousePosition(e.Location);
         }
 
+        if (sender == _sceneEditorViewport && !_isPlayMode && _isTilePaintMode && _selectedEntity?.GetComponent<Tilemap>() is Tilemap activeTilemap && e.Button == MouseButtons.Left)
+        {
+            PaintTile(activeTilemap, ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize), _selectedTileId);
+            return;
+        }
+
         if (sender == _sceneEditorViewport && !_isPlayMode && _isDraggingSelection && _selectedEntity is not null)
         {
             _selectedEntity.Transform.Value.Position = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
@@ -1646,6 +1805,24 @@ public sealed class MainForm : Form
     private void OnGameViewportMouseEnter(object? sender, EventArgs e)
     {
         _gameViewport.Focus();
+    }
+
+
+    private void PaintTile(Tilemap tilemap, Vector2 world, int tileId)
+    {
+        Vector2 origin = tilemap.Entity?.Transform.Value.Position ?? Vector2.Zero;
+        int x = (int)MathF.Floor((world.X - origin.X) / tilemap.TileSize.X);
+        int y = (int)MathF.Floor((world.Y - origin.Y) / tilemap.TileSize.Y);
+        if (x < 0 || x >= tilemap.Width || y < 0 || y >= tilemap.Height)
+        {
+            return;
+        }
+
+        tilemap.SetTile(x, y, tileId);
+        ShowInspector(tilemap);
+        _statusStripLabel.Text = tileId == 0 ? $"Erased tile ({x}, {y})" : $"Painted tile {tileId} at ({x}, {y})";
+        _sceneEditorViewport.Invalidate();
+        _gameViewport.Invalidate();
     }
 
     private Vector2 ScreenToWorld(Point screenPosition, Size viewportSize)
@@ -1709,6 +1886,36 @@ public sealed class MainForm : Form
         PointF center = _renderer.Camera.WorldToScreen(_selectedEntity.Transform.Value.Position, viewportSize);
         using SolidBrush brush = new(Color.DeepSkyBlue);
         graphics.FillEllipse(brush, center.X - 4.0f, center.Y - 4.0f, 8.0f, 8.0f);
+    }
+
+
+    private void DrawTilemapEditingOverlay(System.Drawing.Graphics graphics, Size viewportSize)
+    {
+        if (_selectedEntity?.GetComponent<Tilemap>() is not Tilemap tilemap)
+        {
+            return;
+        }
+
+        float zoom = MathF.Max(0.01f, _renderer.Camera.Zoom);
+        using Pen gridPen = new(_isTilePaintMode ? Color.Lime : Color.FromArgb(130, Color.DeepSkyBlue), 1.0f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+        for (int x = 0; x <= tilemap.Width; x++)
+        {
+            RectangleF bounds = tilemap.GetBounds();
+            PointF top = _renderer.Camera.WorldToScreen(new Vector2(bounds.X + x * tilemap.TileSize.X, bounds.Y), viewportSize);
+            graphics.DrawLine(gridPen, top.X, top.Y, top.X, top.Y + bounds.Height * zoom);
+        }
+
+        for (int y = 0; y <= tilemap.Height; y++)
+        {
+            RectangleF bounds = tilemap.GetBounds();
+            PointF left = _renderer.Camera.WorldToScreen(new Vector2(bounds.X, bounds.Y + y * tilemap.TileSize.Y), viewportSize);
+            graphics.DrawLine(gridPen, left.X, left.Y, left.X + bounds.Width * zoom, left.Y);
+        }
+    }
+
+    private sealed record TilePaletteItem(int TileId, string Name)
+    {
+        public override string ToString() => TileId == 0 ? Name : $"{TileId}: {Name}";
     }
 
     private sealed class DoubleBufferedPanel : Panel

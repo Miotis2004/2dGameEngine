@@ -1,6 +1,6 @@
-# 2dGameEngine# 2dGameEngine
+# Unity 2 Clone
 
-A modern 2D game engine built with C# 14, .NET 10, and WinUI 3.
+A Unity-inspired 2D game editor and runtime built entirely around C# authoring.
 
 The goal of 2dGameEngine is to provide a fully managed, modern, extensible game development framework focused on 2D game creation while leveraging the latest Microsoft technologies. The engine is being developed as both a runtime and an editor, allowing games to be designed, tested, and deployed from a unified environment.
 
@@ -12,10 +12,10 @@ The first game created using the engine will be a 2D platformer. This game serve
 
 ## Primary Goals
 
-* Build a modern 2D game engine in C#
+* Build a Unity-like 2D editor workflow in C#
 * Utilize .NET 10 as the minimum runtime
 * Use WinUI 3 Packaged Applications as the editor platform
-* Support C# as the native scripting language
+* Support C# as the only gameplay scripting language
 * Create an extensible Entity Component System architecture
 * Develop a visual editor for scene creation
 * Support tile-based and sprite-based games
@@ -32,7 +32,7 @@ The first game created using the engine will be a 2D platformer. This game serve
 * Physics system
 * Asset pipeline
 * Packaging and deployment tools
-* Plugin architecture
+* C# editor extension points
 * Multiplayer framework
 * Save/load framework
 
@@ -42,7 +42,7 @@ The first game created using the engine will be a 2D platformer. This game serve
 
 | Technology | Purpose             |
 | ---------- | ------------------- |
-| C# 14      | Primary Language    |
+| C#         | Only scripting language |
 | .NET 10    | Runtime             |
 | WinUI 3    | Editor Framework    |
 | Win2D      | Rendering Backend   |
@@ -171,7 +171,7 @@ AudioLoader
 
 ## 2dGameEngine.Scripting
 
-Provides game behavior implementation.
+Provides C#-only game behavior implementation with Unity-style lifecycle methods (`Awake`, `Start`, and `Update`).
 
 Responsibilities:
 

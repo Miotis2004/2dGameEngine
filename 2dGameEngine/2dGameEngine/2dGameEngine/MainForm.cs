@@ -13,7 +13,7 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 10 platformer validation project inside the editor runtime preview.
+/// Hosts the Phase 11 editor workspace with project creation and runtime preview panes.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -30,16 +30,22 @@ public sealed class MainForm : Form
     private readonly Label _inspectorHeader;
     private readonly Label _runtimeStatusLabel;
     private readonly Label _viewportOverlayLabel;
-    private readonly ToolStripButton _playPauseButton;
+    private readonly ToolStripButton _playButton;
+    private readonly ToolStripButton _pauseButton;
+    private readonly ToolStripButton _stopButton;
     private readonly ToolStripStatusLabel _statusStripLabel;
-    private readonly Panel _viewport;
+    private readonly Panel _sceneEditorViewport;
+    private readonly Panel _gameViewport;
+    private readonly TreeView _projectAssetsTree;
+    private readonly ListBox _consoleList;
+    private CreatedProject? _currentProject;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainForm"/> class.
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 10 Platformer Validation";
+        Text = "2dGameEngine - Phase 11 Editor Workspace";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -62,15 +68,33 @@ public sealed class MainForm : Form
         {
             GripStyle = ToolStripGripStyle.Hidden,
         };
-        _playPauseButton = new ToolStripButton("Pause Preview")
+        ToolStripButton newProjectButton = new("New Project")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
-        _playPauseButton.Click += OnPlayPauseClicked;
+        newProjectButton.Click += OnNewProjectClicked;
+        _playButton = new ToolStripButton("Play")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _pauseButton = new ToolStripButton("Pause")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _stopButton = new ToolStripButton("Stop")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _playButton.Click += OnPlayClicked;
+        _pauseButton.Click += OnPauseClicked;
+        _stopButton.Click += OnStopClicked;
         toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
         toolStrip.Items.Add(new ToolStripSeparator());
-        toolStrip.Items.Add(_playPauseButton);
-        toolStrip.Items.Add(new ToolStripLabel("Scene Preview"));
+        toolStrip.Items.Add(newProjectButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_playButton);
+        toolStrip.Items.Add(_pauseButton);
+        toolStrip.Items.Add(_stopButton);
 
         StatusStrip statusStrip = new();
         _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
@@ -111,16 +135,27 @@ public sealed class MainForm : Form
             Text = "Starting runtime preview...",
         };
 
-        _viewport = new DoubleBufferedPanel
+        _sceneEditorViewport = new DoubleBufferedPanel
+        {
+            BackColor = Color.FromArgb(24, 28, 36),
+            Dock = DockStyle.Fill,
+        };
+        _sceneEditorViewport.Paint += OnSceneEditorPaint;
+        _sceneEditorViewport.MouseDown += OnViewportMouseDown;
+        _sceneEditorViewport.MouseUp += OnViewportMouseUp;
+        _sceneEditorViewport.MouseMove += OnViewportMouseMove;
+        _sceneEditorViewport.MouseWheel += OnViewportMouseWheel;
+
+        _gameViewport = new DoubleBufferedPanel
         {
             BackColor = Color.Black,
             Dock = DockStyle.Fill,
         };
-        _viewport.Paint += OnViewportPaint;
-        _viewport.MouseDown += OnViewportMouseDown;
-        _viewport.MouseUp += OnViewportMouseUp;
-        _viewport.MouseMove += OnViewportMouseMove;
-        _viewport.MouseWheel += OnViewportMouseWheel;
+        _gameViewport.Paint += OnGameViewportPaint;
+        _gameViewport.MouseDown += OnViewportMouseDown;
+        _gameViewport.MouseUp += OnViewportMouseUp;
+        _gameViewport.MouseMove += OnViewportMouseMove;
+        _gameViewport.MouseWheel += OnViewportMouseWheel;
 
         _viewportOverlayLabel = new Label
         {
@@ -132,7 +167,21 @@ public sealed class MainForm : Form
             Padding = new Padding(10, 6, 10, 4),
             Text = "Platformer Validation - reach the gold flag (A/D or arrows move, Space/W/Up jump, R reset, mouse tracked)",
         };
-        _viewport.Controls.Add(_viewportOverlayLabel);
+        _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
+
+        _projectAssetsTree = new TreeView
+        {
+            Dock = DockStyle.Fill,
+            HideSelection = false,
+        };
+        PopulateProjectAssetsPane(null);
+
+        _consoleList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font(FontFamily.GenericMonospace, 9.0f),
+        };
+        LogToConsole("Editor workspace initialized.");
 
         SplitContainer rootSplit = new()
         {
@@ -141,27 +190,53 @@ public sealed class MainForm : Form
             SplitterDistance = 260,
         };
 
-        SplitContainer centerSplit = new()
+        SplitContainer leftSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 330,
+        };
+
+        SplitContainer centerRightSplit = new()
         {
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.Panel2,
             SplitterDistance = 760,
         };
 
-        SplitContainer viewportRuntimeSplit = new()
+        SplitContainer editorGameSplit = new()
         {
             Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel2,
             Orientation = Orientation.Horizontal,
-            SplitterDistance = 470,
+            SplitterDistance = 310,
         };
 
-        rootSplit.Panel1.Controls.Add(CreateDockPanel("Hierarchy", _hierarchyTree));
-        rootSplit.Panel2.Controls.Add(centerSplit);
-        centerSplit.Panel1.Controls.Add(viewportRuntimeSplit);
-        centerSplit.Panel2.Controls.Add(CreateInspectorPanel());
-        viewportRuntimeSplit.Panel1.Controls.Add(CreateDockPanel("Viewport", _viewport));
-        viewportRuntimeSplit.Panel2.Controls.Add(CreateDockPanel("Runtime Preview", _runtimeStatusLabel));
+        SplitContainer bottomSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 140,
+        };
+
+        SplitContainer inspectorConsoleSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 430,
+        };
+
+        leftSplit.Panel1.Controls.Add(CreateDockPanel("Hierarchy", _hierarchyTree));
+        leftSplit.Panel2.Controls.Add(CreateDockPanel("Project / Assets", _projectAssetsTree));
+        rootSplit.Panel1.Controls.Add(leftSplit);
+        rootSplit.Panel2.Controls.Add(centerRightSplit);
+        centerRightSplit.Panel1.Controls.Add(bottomSplit);
+        centerRightSplit.Panel2.Controls.Add(inspectorConsoleSplit);
+        bottomSplit.Panel1.Controls.Add(editorGameSplit);
+        bottomSplit.Panel2.Controls.Add(CreateDockPanel("Runtime Status", _runtimeStatusLabel));
+        editorGameSplit.Panel1.Controls.Add(CreateDockPanel("Scene Editor", _sceneEditorViewport));
+        editorGameSplit.Panel2.Controls.Add(CreateDockPanel("Rendered Game", _gameViewport));
+        inspectorConsoleSplit.Panel1.Controls.Add(CreateInspectorPanel());
+        inspectorConsoleSplit.Panel2.Controls.Add(CreateDockPanel("Console", _consoleList));
 
         Controls.Add(rootSplit);
         Controls.Add(statusStrip);
@@ -180,13 +255,20 @@ public sealed class MainForm : Form
         _engine.Updated -= OnEngineUpdated;
         KeyDown -= OnFormKeyDown;
         KeyUp -= OnFormKeyUp;
-        _playPauseButton.Click -= OnPlayPauseClicked;
+        _playButton.Click -= OnPlayClicked;
+        _pauseButton.Click -= OnPauseClicked;
+        _stopButton.Click -= OnStopClicked;
         _hierarchyTree.AfterSelect -= OnHierarchySelectionChanged;
-        _viewport.Paint -= OnViewportPaint;
-        _viewport.MouseDown -= OnViewportMouseDown;
-        _viewport.MouseUp -= OnViewportMouseUp;
-        _viewport.MouseMove -= OnViewportMouseMove;
-        _viewport.MouseWheel -= OnViewportMouseWheel;
+        _sceneEditorViewport.Paint -= OnSceneEditorPaint;
+        _gameViewport.Paint -= OnGameViewportPaint;
+        _sceneEditorViewport.MouseDown -= OnViewportMouseDown;
+        _sceneEditorViewport.MouseUp -= OnViewportMouseUp;
+        _sceneEditorViewport.MouseMove -= OnViewportMouseMove;
+        _sceneEditorViewport.MouseWheel -= OnViewportMouseWheel;
+        _gameViewport.MouseDown -= OnViewportMouseDown;
+        _gameViewport.MouseUp -= OnViewportMouseUp;
+        _gameViewport.MouseMove -= OnViewportMouseMove;
+        _gameViewport.MouseWheel -= OnViewportMouseWheel;
         _assets.Dispose();
         base.OnFormClosed(e);
     }
@@ -353,6 +435,54 @@ public sealed class MainForm : Form
         _hierarchyTree.EndUpdate();
     }
 
+
+    private void OnNewProjectClicked(object? sender, EventArgs e)
+    {
+        using NewProjectDialog dialog = new();
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName);
+            PopulateProjectAssetsPane(_currentProject);
+            LogToConsole($"Created project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
+            _statusStripLabel.Text = $"Project created: {_currentProject.SafeName}";
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Project creation failed: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Project Creation Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void PopulateProjectAssetsPane(CreatedProject? project)
+    {
+        _projectAssetsTree.Nodes.Clear();
+        TreeNode root = new(project?.DisplayName ?? "No project loaded");
+        if (project is not null)
+        {
+            root.Nodes.Add(new TreeNode($"Solution: {Path.GetFileName(project.SolutionPath)}") { Tag = project.SolutionPath });
+            root.Nodes.Add(new TreeNode("Scenes") { Tag = project.ScenesDirectory });
+            root.Nodes.Add(new TreeNode("Assets") { Tag = project.AssetsDirectory });
+        }
+        else
+        {
+            root.Nodes.Add("Use New Project to create a full C# game solution.");
+        }
+
+        _projectAssetsTree.Nodes.Add(root);
+        root.ExpandAll();
+    }
+
+    private void LogToConsole(string message)
+    {
+        _consoleList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        _consoleList.TopIndex = Math.Max(0, _consoleList.Items.Count - 1);
+    }
+
     private void OnHierarchySelectionChanged(object? sender, TreeViewEventArgs e)
     {
         ShowInspector(e.Node?.Tag);
@@ -417,27 +547,58 @@ public sealed class MainForm : Form
         _runtimeStatusLabel.Text = FormattableString.Invariant(
             $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_playerEntity.Name}\nObjective: {(_levelComplete ? "Complete" : "Reach the gold flag")}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_playerBody.Velocity.X:0.00}, {_playerBody.Velocity.Y:0.00})\nGrounded: {_playerBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
         _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}");
-        _viewport.Invalidate();
+        _sceneEditorViewport.Invalidate();
+        _gameViewport.Invalidate();
     }
 
-    private void OnViewportPaint(object? sender, PaintEventArgs e)
+    private void OnSceneEditorPaint(object? sender, PaintEventArgs e)
     {
-        _renderer.Render(e.Graphics, _engine.ActiveScene, _viewport.ClientSize);
+        DrawViewportGrid(e.Graphics, _sceneEditorViewport.ClientSize);
+        _renderer.Render(e.Graphics, _engine.ActiveScene, _sceneEditorViewport.ClientSize);
     }
 
-    private void OnPlayPauseClicked(object? sender, EventArgs e)
+    private void OnGameViewportPaint(object? sender, PaintEventArgs e)
     {
-        if (_engine.IsRunning)
+        _renderer.Render(e.Graphics, _engine.ActiveScene, _gameViewport.ClientSize);
+    }
+
+    private static void DrawViewportGrid(System.Drawing.Graphics graphics, Size size)
+    {
+        using Pen majorPen = new(Color.FromArgb(55, 76, 91, 112));
+        using Pen minorPen = new(Color.FromArgb(28, 76, 91, 112));
+        for (int x = 0; x < size.Width; x += 32)
         {
-            _engine.Stop();
-            _playPauseButton.Text = "Play Preview";
-            _statusStripLabel.Text = "Runtime preview paused";
-            return;
+            graphics.DrawLine(x % 128 == 0 ? majorPen : minorPen, x, 0, x, size.Height);
         }
 
+        for (int y = 0; y < size.Height; y += 32)
+        {
+            graphics.DrawLine(y % 128 == 0 ? majorPen : minorPen, 0, y, size.Width, y);
+        }
+    }
+
+    private void OnPlayClicked(object? sender, EventArgs e)
+    {
         _engine.Start();
-        _playPauseButton.Text = "Pause Preview";
+        LogToConsole("Play mode started.");
         _statusStripLabel.Text = "Runtime preview playing";
+    }
+
+    private void OnPauseClicked(object? sender, EventArgs e)
+    {
+        _engine.Stop();
+        LogToConsole("Play mode paused.");
+        _statusStripLabel.Text = "Runtime preview paused";
+    }
+
+    private void OnStopClicked(object? sender, EventArgs e)
+    {
+        _engine.Stop();
+        ResetValidationLevel();
+        _sceneEditorViewport.Invalidate();
+        _gameViewport.Invalidate();
+        LogToConsole("Play mode stopped and scene reset.");
+        _statusStripLabel.Text = "Runtime preview stopped";
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
@@ -454,7 +615,7 @@ public sealed class MainForm : Form
     {
         _engine.Input.SetMouseButtonDown(e.Button);
         _engine.Input.SetMousePosition(e.Location);
-        _viewport.Focus();
+        ((Control?)sender)?.Focus();
     }
 
     private void OnViewportMouseUp(object? sender, MouseEventArgs e)

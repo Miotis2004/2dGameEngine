@@ -522,6 +522,125 @@ Verification:
 
 ---
 
+# Phase 11: Full Editor Workspace and Project Creation
+
+Goal:
+
+Turn the runtime validation shell into the starting point for a full game editor.
+
+Features:
+
+* Project creation workflow
+* Complete generated C# solution for each new game project
+* Scene editor pane
+* Rendered game pane
+* Hierarchy pane
+* Project and assets pane
+* Inspector pane
+* Console pane
+* Play, pause, and stop testing controls
+
+Deliverable:
+
+A full editor workspace shell that can create new game projects and host the core panes required for scene editing, asset management, inspection, console output, and runtime testing.
+
+Status:
+
+Completed. The application now launches as the Phase 11 editor workspace with split panes for hierarchy, project/assets, scene editing, rendered game preview, inspector, console output, and runtime status. The toolbar includes New Project plus Play, Pause, and Stop controls. Creating a project generates a complete C# solution folder with Core, Game, and Editor projects, starter source files, default scene data, asset folders, and a project README.
+
+Verification:
+
+* The main window is branded as the Phase 11 editor workspace.
+* The editor shell exposes hierarchy, project/assets, scene editor, rendered game, inspector, console, and runtime status panes.
+* The toolbar exposes New Project, Play, Pause, and Stop controls.
+* New Project creates a C# solution containing separate Core, Game, and Editor projects.
+* The generated project includes starter source files, asset folders, scene folders, a default scene file, and README documentation.
+
+---
+
+# Phase 12: Scene Editing Tools
+
+Goal:
+
+Add interactive scene-authoring operations to the editor workspace.
+
+Planned Features:
+
+* Entity creation and deletion from the hierarchy pane
+* Transform gizmos for move, rotate, and scale
+* Selection outlines and scene picking
+* Scene save/load commands
+* Undo and redo support for editor actions
+* Editable inspector fields for entity and component properties
+
+Deliverable:
+
+A usable scene editor that can create, modify, save, and reload entity-based scenes.
+
+---
+
+# Phase 13: Asset Pipeline and Import Workflow
+
+Goal:
+
+Make the project/assets pane the central workflow for bringing content into a game project.
+
+Planned Features:
+
+* Asset import commands
+* Asset metadata files
+* Texture and sprite previewing
+* Sprite slicing setup
+* Audio asset registration
+* Asset refresh and validation
+
+Deliverable:
+
+An asset pipeline that imports source files, tracks metadata, and exposes assets to scenes and runtime systems.
+
+---
+
+# Phase 14: Component and Script Authoring
+
+Goal:
+
+Enable game-specific behavior authoring from inside the generated C# solution.
+
+Planned Features:
+
+* Add component command
+* Script/component templates
+* Generated project reload detection
+* Runtime component discovery
+* Inspector support for script fields
+* Build diagnostics surfaced in the console pane
+
+Deliverable:
+
+A scripting workflow where users can add C# gameplay components, build them, and attach them to entities.
+
+---
+
+# Phase 15: Editor Play Mode Isolation
+
+Goal:
+
+Separate edit-time scene data from play-mode runtime state.
+
+Planned Features:
+
+* Scene state snapshot before play
+* Restore edit scene on stop
+* Pause and single-step simulation controls
+* Runtime error reporting in the console
+* Game pane input focus and capture handling
+
+Deliverable:
+
+Safe Play/Pause/Stop testing where runtime changes do not corrupt the open edit scene.
+
+---
+
 # Coding Standards
 
 ## General Rules

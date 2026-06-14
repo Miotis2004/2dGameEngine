@@ -16,16 +16,16 @@ using _2dGameEngine.Scripting;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 12 scene editing workspace with project creation and runtime preview panes.
+/// Hosts the Phase 15 scene editing workspace with isolated play-mode runtime preview panes.
 /// </summary>
 public sealed class MainForm : Form
 {
     private readonly AssetManager _assets;
     private readonly Engine _engine;
-    private readonly Entity _playerEntity;
-    private readonly RigidBody2D _playerBody;
-    private readonly Entity _goalEntity;
-    private readonly Vector2 _playerStartPosition;
+    private Entity _playerEntity = null!;
+    private RigidBody2D _playerBody = null!;
+    private Entity _goalEntity = null!;
+    private Vector2 _playerStartPosition;
     private bool _levelComplete;
     private readonly Renderer2D _renderer;
     private readonly TreeView _hierarchyTree;
@@ -36,6 +36,7 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _playButton;
     private readonly ToolStripButton _pauseButton;
     private readonly ToolStripButton _stopButton;
+    private readonly ToolStripButton _stepButton;
     private readonly ToolStripStatusLabel _statusStripLabel;
     private readonly Panel _sceneEditorViewport;
     private readonly Panel _gameViewport;
@@ -56,13 +57,16 @@ public sealed class MainForm : Form
     private Vector2 _dragOffset;
     private CreatedProject? _currentProject;
     private AssetPipeline? _assetPipeline;
+    private Scene _editScene = null!;
+    private string? _playModeSnapshot;
+    private bool _isPlayMode;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainForm"/> class.
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 14 Component and Script Authoring";
+        Text = "2dGameEngine - Phase 15 Editor Play Mode Isolation";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -75,11 +79,13 @@ public sealed class MainForm : Form
         _renderer.Camera.Zoom = 1.0f;
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
-        Scene scene = CreateValidationScene(_assets, out _playerEntity, out _playerBody, out _goalEntity, out _playerStartPosition);
+        _editScene = CreateValidationScene(_assets);
+        BindValidationSceneReferences(_editScene);
 
         _engine = new Engine();
-        _engine.SetActiveScene(scene);
+        _engine.SetActiveScene(_editScene);
         _engine.Updated += OnEngineUpdated;
+        _engine.ErrorOccurred += OnEngineErrorOccurred;
 
         ToolStrip toolStrip = new()
         {
@@ -102,9 +108,14 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _stepButton = new ToolStripButton("Step")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _playButton.Click += OnPlayClicked;
         _pauseButton.Click += OnPauseClicked;
         _stopButton.Click += OnStopClicked;
+        _stepButton.Click += OnStepClicked;
         _addSpriteButton = new ToolStripButton("Add Sprite")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -163,6 +174,7 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_playButton);
         toolStrip.Items.Add(_pauseButton);
         toolStrip.Items.Add(_stopButton);
+        toolStrip.Items.Add(_stepButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_addSpriteButton);
         toolStrip.Items.Add(_duplicateButton);
@@ -232,6 +244,7 @@ public sealed class MainForm : Form
         };
         _gameViewport.Paint += OnGameViewportPaint;
         _gameViewport.MouseDown += OnViewportMouseDown;
+        _gameViewport.MouseEnter += OnGameViewportMouseEnter;
         _gameViewport.MouseUp += OnViewportMouseUp;
         _gameViewport.MouseMove += OnViewportMouseMove;
         _gameViewport.MouseWheel += OnViewportMouseWheel;
@@ -332,22 +345,23 @@ public sealed class MainForm : Form
         Controls.Add(statusStrip);
         Controls.Add(toolStrip);
 
-        PopulateHierarchy(scene);
+        PopulateHierarchy(_editScene);
+        UpdatePlayModeControls();
         KeyDown += OnFormKeyDown;
         KeyUp += OnFormKeyUp;
-
-        _engine.Start();
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _engine.Stop();
         _engine.Updated -= OnEngineUpdated;
+        _engine.ErrorOccurred -= OnEngineErrorOccurred;
         KeyDown -= OnFormKeyDown;
         KeyUp -= OnFormKeyUp;
         _playButton.Click -= OnPlayClicked;
         _pauseButton.Click -= OnPauseClicked;
         _stopButton.Click -= OnStopClicked;
+        _stepButton.Click -= OnStepClicked;
         _addSpriteButton.Click -= OnAddSpriteClicked;
         _duplicateButton.Click -= OnDuplicateClicked;
         _deleteButton.Click -= OnDeleteClicked;
@@ -369,6 +383,7 @@ public sealed class MainForm : Form
         _sceneEditorViewport.MouseMove -= OnViewportMouseMove;
         _sceneEditorViewport.MouseWheel -= OnViewportMouseWheel;
         _gameViewport.MouseDown -= OnViewportMouseDown;
+        _gameViewport.MouseEnter -= OnGameViewportMouseEnter;
         _gameViewport.MouseUp -= OnViewportMouseUp;
         _gameViewport.MouseMove -= OnViewportMouseMove;
         _gameViewport.MouseWheel -= OnViewportMouseWheel;
@@ -409,16 +424,16 @@ public sealed class MainForm : Form
         return CreateDockPanel("Inspector", panel);
     }
 
-    private static Scene CreateValidationScene(AssetManager assets, out Entity playerEntity, out RigidBody2D playerBody, out Entity goalEntity, out Vector2 playerStartPosition)
+    private static Scene CreateValidationScene(AssetManager assets)
     {
         SpriteSheetAsset tileSprites = assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
         AnimationClip playerIdle = assets.LoadAnimationClip("Assets/player-idle.animation.json");
 
         Scene scene = new("Phase 10 Platformer Validation Level");
-        playerStartPosition = new Vector2(-460.0f, 64.0f);
-        playerEntity = scene.CreateEntity("Player Controller");
+        Vector2 playerStartPosition = new(-460.0f, 64.0f);
+        Entity playerEntity = scene.CreateEntity("Player Controller");
         playerEntity.Transform.Value.Position = playerStartPosition;
-        playerBody = playerEntity.AddComponent(new RigidBody2D());
+        playerEntity.AddComponent(new RigidBody2D());
         playerEntity.AddComponent(new BoxCollider2D(new Vector2(42.0f, 58.0f)));
         playerEntity.AddComponent(new PlatformerMovementComponent(285.0f, 610.0f));
         playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10 });
@@ -453,12 +468,20 @@ public sealed class MainForm : Form
 
         level.AddComponent(new TilemapCollider2D());
 
-        goalEntity = scene.CreateEntity("Goal Flag");
+        Entity goalEntity = scene.CreateEntity("Goal Flag");
         goalEntity.Transform.Value.Position = new Vector2(840.0f, 68.0f);
         goalEntity.AddComponent(new BoxCollider2D(new Vector2(44.0f, 96.0f)) { IsTrigger = true });
         goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8 });
 
         return scene;
+    }
+
+    private void BindValidationSceneReferences(Scene scene)
+    {
+        _playerEntity = scene.Entities.First(entity => entity.Name == "Player Controller");
+        _playerBody = _playerEntity.GetComponent<RigidBody2D>() ?? throw new InvalidDataException("Validation player is missing RigidBody2D.");
+        _goalEntity = scene.Entities.First(entity => entity.Name == "Goal Flag");
+        _playerStartPosition = _playerEntity.Transform.Value.Position;
     }
 
     private static void AddPlatform(Tilemap tilemap, int startX, int y, int width)
@@ -571,15 +594,20 @@ public sealed class MainForm : Form
             ShowInspector(entity);
         }
 
-        _deleteButton.Enabled = entity is not null;
-        _duplicateButton.Enabled = entity is not null;
-        _addComponentButton.Enabled = entity is not null;
-        _newScriptButton.Enabled = entity is not null;
+        _deleteButton.Enabled = !_isPlayMode && entity is not null;
+        _duplicateButton.Enabled = !_isPlayMode && entity is not null;
+        _addComponentButton.Enabled = !_isPlayMode && entity is not null;
+        _newScriptButton.Enabled = !_isPlayMode && entity is not null;
         _sceneEditorViewport.Invalidate();
     }
 
     private void OnAddSpriteClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         Scene? scene = _engine.ActiveScene;
         if (scene is null)
         {
@@ -595,12 +623,18 @@ public sealed class MainForm : Form
         });
 
         LogToConsole($"Added entity '{entity.Name}'.");
-        PopulateHierarchy(scene);
+        PopulateHierarchy(_editScene);
+        UpdatePlayModeControls();
         SelectEntity(entity);
     }
 
     private void OnDuplicateClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         Scene? scene = _engine.ActiveScene;
         if (scene is null || _selectedEntity is null)
         {
@@ -609,12 +643,18 @@ public sealed class MainForm : Form
 
         Entity duplicate = DuplicateEntity(scene, _selectedEntity);
         LogToConsole($"Duplicated '{_selectedEntity.Name}' as '{duplicate.Name}'.");
-        PopulateHierarchy(scene);
+        PopulateHierarchy(_editScene);
+        UpdatePlayModeControls();
         SelectEntity(duplicate);
     }
 
     private void OnDeleteClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         Scene? scene = _engine.ActiveScene;
         if (scene is null || _selectedEntity is null)
         {
@@ -626,13 +666,19 @@ public sealed class MainForm : Form
         _selectedEntity = null;
         _isDraggingSelection = false;
         LogToConsole($"Deleted entity '{name}'.");
-        PopulateHierarchy(scene);
+        PopulateHierarchy(_editScene);
+        UpdatePlayModeControls();
         ShowInspector(scene);
         _sceneEditorViewport.Invalidate();
     }
 
     private void OnSaveSceneClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         Scene? scene = _engine.ActiveScene;
         if (scene is null)
         {
@@ -717,6 +763,11 @@ public sealed class MainForm : Form
 
     private void OnAddComponentRecipeClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         if (_selectedEntity is null || sender is not ToolStripMenuItem { Tag: ComponentRecipe recipe })
         {
             return;
@@ -731,6 +782,11 @@ public sealed class MainForm : Form
 
     private void OnNewScriptClicked(object? sender, EventArgs e)
     {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
         if (_selectedEntity is null)
         {
             return;
@@ -873,10 +929,10 @@ public sealed class MainForm : Form
     private void OnHierarchySelectionChanged(object? sender, TreeViewEventArgs e)
     {
         _selectedEntity = e.Node?.Tag as Entity;
-        _deleteButton.Enabled = _selectedEntity is not null;
-        _duplicateButton.Enabled = _selectedEntity is not null;
-        _addComponentButton.Enabled = _selectedEntity is not null;
-        _newScriptButton.Enabled = _selectedEntity is not null;
+        _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         ShowInspector(e.Node?.Tag);
         _sceneEditorViewport.Invalidate();
     }
@@ -994,45 +1050,150 @@ public sealed class MainForm : Form
 
     private void OnPlayClicked(object? sender, EventArgs e)
     {
-        _engine.Start();
-        LogToConsole("Play mode started.");
-        _statusStripLabel.Text = "Runtime preview playing";
+        try
+        {
+            if (!_isPlayMode)
+            {
+                _playModeSnapshot = SceneSerializer.Serialize(_editScene);
+                Scene runtimeScene = SceneSerializer.Deserialize(_playModeSnapshot, _assets);
+                _engine.SetActiveScene(runtimeScene);
+                BindValidationSceneReferences(runtimeScene);
+                SelectEntity(null);
+                PopulateHierarchy(runtimeScene);
+                _isPlayMode = true;
+                LogToConsole("Play mode started from an isolated scene snapshot.");
+            }
+
+            _engine.Start();
+            _gameViewport.Focus();
+            _statusStripLabel.Text = "Play mode running in isolated runtime scene";
+        }
+        catch (Exception ex)
+        {
+            ReportRuntimeError(ex);
+        }
+
+        UpdatePlayModeControls();
     }
 
     private void OnPauseClicked(object? sender, EventArgs e)
     {
         _engine.Stop();
-        LogToConsole("Play mode paused.");
-        _statusStripLabel.Text = "Runtime preview paused";
+        LogToConsole(_isPlayMode ? "Play mode paused." : "Edit preview paused.");
+        _statusStripLabel.Text = _isPlayMode ? "Play mode paused" : "Runtime preview paused";
+        UpdatePlayModeControls();
+    }
+
+    private void OnStepClicked(object? sender, EventArgs e)
+    {
+        if (!_isPlayMode)
+        {
+            OnPlayClicked(sender, e);
+            _engine.Stop();
+        }
+
+        _engine.Step();
+        LogToConsole("Advanced play mode by one simulation frame.");
+        _statusStripLabel.Text = "Play mode single-step advanced";
+        UpdatePlayModeControls();
     }
 
     private void OnStopClicked(object? sender, EventArgs e)
     {
         _engine.Stop();
-        ResetValidationLevel();
+        if (_isPlayMode)
+        {
+            RestoreEditSceneAfterPlay();
+            LogToConsole("Play mode stopped; restored the edit scene snapshot.");
+        }
+        else
+        {
+            ResetValidationLevel();
+            LogToConsole("Runtime preview stopped and scene reset.");
+        }
+
         _sceneEditorViewport.Invalidate();
         _gameViewport.Invalidate();
-        LogToConsole("Play mode stopped and scene reset.");
-        _statusStripLabel.Text = "Runtime preview stopped";
+        _statusStripLabel.Text = "Play mode stopped; edit scene restored";
+        UpdatePlayModeControls();
+    }
+
+    private bool EnsureEditMode()
+    {
+        if (!_isPlayMode)
+        {
+            return true;
+        }
+
+        LogToConsole("Edit operation blocked while play mode is active. Stop play mode to modify the scene.");
+        _statusStripLabel.Text = "Stop play mode before editing the scene";
+        return false;
+    }
+
+    private void RestoreEditSceneAfterPlay()
+    {
+        string? selectedName = _selectedEntity?.Name;
+        _editScene = _playModeSnapshot is null ? _editScene : SceneSerializer.Deserialize(_playModeSnapshot, _assets);
+        _playModeSnapshot = null;
+        _isPlayMode = false;
+        _engine.SetActiveScene(_editScene);
+        BindValidationSceneReferences(_editScene);
+        PopulateHierarchy(_editScene);
+        SelectEntity(string.IsNullOrWhiteSpace(selectedName) ? null : _editScene.Entities.FirstOrDefault(entity => entity.Name == selectedName));
+    }
+
+    private void UpdatePlayModeControls()
+    {
+        _playButton.Enabled = !_engine.IsRunning;
+        _pauseButton.Enabled = _engine.IsRunning;
+        _stopButton.Enabled = _isPlayMode || _engine.IsRunning;
+        _stepButton.Enabled = !_engine.IsRunning;
+        _addSpriteButton.Enabled = !_isPlayMode;
+        _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _saveSceneButton.Enabled = !_isPlayMode;
+        _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+    }
+
+    private void OnEngineErrorOccurred(object? sender, Exception ex)
+    {
+        ReportRuntimeError(ex);
+    }
+
+    private void ReportRuntimeError(Exception ex)
+    {
+        LogToConsole($"Runtime error: {ex.GetType().Name}: {ex.Message}");
+        _statusStripLabel.Text = "Runtime error reported in console; play mode paused";
+        UpdatePlayModeControls();
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
-        _engine.Input.SetKeyDown(e.KeyCode);
+        if (_isPlayMode && _gameViewport.Focused)
+        {
+            _engine.Input.SetKeyDown(e.KeyCode);
+        }
     }
 
     private void OnFormKeyUp(object? sender, KeyEventArgs e)
     {
-        _engine.Input.SetKeyUp(e.KeyCode);
+        if (_isPlayMode && _gameViewport.Focused)
+        {
+            _engine.Input.SetKeyUp(e.KeyCode);
+        }
     }
 
     private void OnViewportMouseDown(object? sender, MouseEventArgs e)
     {
-        _engine.Input.SetMouseButtonDown(e.Button);
-        _engine.Input.SetMousePosition(e.Location);
         ((Control?)sender)?.Focus();
+        if (sender == _gameViewport && _isPlayMode)
+        {
+            _engine.Input.SetMouseButtonDown(e.Button);
+            _engine.Input.SetMousePosition(e.Location);
+        }
 
-        if (sender == _sceneEditorViewport && e.Button == MouseButtons.Left)
+        if (sender == _sceneEditorViewport && !_isPlayMode && e.Button == MouseButtons.Left)
         {
             Vector2 world = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize);
             Entity? hit = HitTestEntity(world);
@@ -1047,8 +1208,11 @@ public sealed class MainForm : Form
 
     private void OnViewportMouseUp(object? sender, MouseEventArgs e)
     {
-        _engine.Input.SetMouseButtonUp(e.Button);
-        _engine.Input.SetMousePosition(e.Location);
+        if (sender == _gameViewport && _isPlayMode)
+        {
+            _engine.Input.SetMouseButtonUp(e.Button);
+            _engine.Input.SetMousePosition(e.Location);
+        }
         if (e.Button == MouseButtons.Left)
         {
             _isDraggingSelection = false;
@@ -1057,8 +1221,12 @@ public sealed class MainForm : Form
 
     private void OnViewportMouseMove(object? sender, MouseEventArgs e)
     {
-        _engine.Input.SetMousePosition(e.Location);
-        if (sender == _sceneEditorViewport && _isDraggingSelection && _selectedEntity is not null)
+        if (sender == _gameViewport && _isPlayMode)
+        {
+            _engine.Input.SetMousePosition(e.Location);
+        }
+
+        if (sender == _sceneEditorViewport && !_isPlayMode && _isDraggingSelection && _selectedEntity is not null)
         {
             _selectedEntity.Transform.Value.Position = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
             ShowInspector(_selectedEntity);
@@ -1069,10 +1237,18 @@ public sealed class MainForm : Form
 
     private void OnViewportMouseWheel(object? sender, MouseEventArgs e)
     {
-        _engine.Input.AddMouseWheelDelta(e.Delta);
-        _engine.Input.SetMousePosition(e.Location);
+        if (sender == _gameViewport && _isPlayMode)
+        {
+            _engine.Input.AddMouseWheelDelta(e.Delta);
+            _engine.Input.SetMousePosition(e.Location);
+        }
     }
 
+
+    private void OnGameViewportMouseEnter(object? sender, EventArgs e)
+    {
+        _gameViewport.Focus();
+    }
 
     private Vector2 ScreenToWorld(Point screenPosition, Size viewportSize)
     {

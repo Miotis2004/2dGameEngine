@@ -68,14 +68,27 @@ public sealed class Scene
     public bool RemoveEntity(Entity entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        return _entities.Remove(entity);
+        if (!_entities.Remove(entity))
+        {
+            return false;
+        }
+
+        if (entity.Parent is not null)
+        {
+            entity.Parent.RemoveChild(entity);
+        }
+
+        return true;
     }
 
     internal void Update(Time time, InputState input)
     {
         foreach (Entity entity in _entities.ToArray())
         {
-            entity.Update(time, input);
+            if (entity.Parent is null)
+            {
+                entity.Update(time, input);
+            }
         }
 
         Physics.Step(this, time);

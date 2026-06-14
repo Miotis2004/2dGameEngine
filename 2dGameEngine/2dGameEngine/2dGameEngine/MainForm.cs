@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Numerics;
 using System.Windows.Forms;
+using _2dGameEngine.Animation;
 using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
@@ -12,7 +13,7 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Hosts the Phase 6 content-system runtime demonstration.
+/// Hosts the Phase 7 animation runtime demonstration.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -29,7 +30,7 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine";
+        Text = "2dGameEngine - Phase 7 Animation";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(720, 480);
         ClientSize = new Size(960, 540);
@@ -50,7 +51,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 18.0f, FontStyle.Bold),
-            Text = "2dGameEngine Phase 6 Content System",
+            Text = "2dGameEngine Phase 7 Animation",
         };
 
         _engineStatusLabel = new Label
@@ -86,15 +87,17 @@ public sealed class MainForm : Form
 
         _assets = new AssetManager(Path.Combine(AppContext.BaseDirectory, "Content"));
         SpriteSheetAsset tileSprites = _assets.LoadSpriteSheet("Assets/demo-tiles.spritesheet.json");
+        AnimationClip playerIdle = _assets.LoadAnimationClip("Assets/player-idle.animation.json");
 
         _engine = new Engine();
-        Scene scene = new("Phase 6 Content Demo Scene");
+        Scene scene = new("Phase 7 Animation Demo Scene");
         _demoEntity = scene.CreateEntity("Player Rigidbody");
         _demoEntity.Transform.Value.Position = new Vector2(-220.0f, -160.0f);
         _demoBody = _demoEntity.AddComponent(new RigidBody2D());
         _demoEntity.AddComponent(new BoxCollider2D(new Vector2(64.0f, 96.0f)));
         _demoEntity.AddComponent(new PlatformerMovementComponent(260.0f, 520.0f));
         _demoEntity.AddComponent(new SpriteRenderer(new Vector2(64.0f, 96.0f), Color.CornflowerBlue));
+        _demoEntity.AddComponent(new AnimationPlayer(playerIdle));
 
         Entity level = scene.CreateEntity("Tilemap Level");
         level.Transform.Value.Position = new Vector2(-384.0f, -96.0f);
@@ -153,7 +156,7 @@ public sealed class MainForm : Form
         InputState input = args.Input;
         Point mouseDelta = input.MouseDelta;
         _engineStatusLabel.Text = FormattableString.Invariant(
-            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nMove: A/D or Left/Right, Jump: Space/W/Up, Land on externally loaded sprite-sheet tiles\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
+            $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nEntity: {_demoEntity.Name}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_demoBody.Velocity.X:0.00}, {_demoBody.Velocity.Y:0.00})\nGrounded: {_demoBody.IsGrounded}\nAnimation: Player Idle ({input.MouseWheelDelta:+0;-0;0} wheel this frame)\nMove: A/D or Left/Right, Jump: Space/W/Up, animated sprite plays from JSON clip metadata\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
 
         _viewport.Invalidate();
     }

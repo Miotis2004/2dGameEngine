@@ -1,0 +1,23 @@
+{
+  "name": "Player Idle",
+  "spriteSheet": "demo-tiles.spritesheet.json",
+  "loop": true,
+  "frames": [
+    {
+      "sprite": "grass",
+      "durationMilliseconds": 160
+    },
+    {
+      "sprite": "platform",
+      "durationMilliseconds": 160
+    },
+    {
+      "sprite": "dirt",
+      "durationMilliseconds": 160
+    },
+    {
+      "sprite": "platform",
+      "durationMilliseconds": 160
+    }
+  ]
+}

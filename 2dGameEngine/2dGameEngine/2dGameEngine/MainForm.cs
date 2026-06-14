@@ -562,7 +562,7 @@ public sealed class MainForm : Form
         _renderer.Render(e.Graphics, _engine.ActiveScene, _gameViewport.ClientSize);
     }
 
-    private static void DrawViewportGrid(Graphics graphics, Size size)
+    private static void DrawViewportGrid(System.Drawing.Graphics graphics, Size size)
     {
         using Pen majorPen = new(Color.FromArgb(55, 76, 91, 112));
         using Pen minorPen = new(Color.FromArgb(28, 76, 91, 112));

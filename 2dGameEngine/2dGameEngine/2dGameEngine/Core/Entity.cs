@@ -26,7 +26,7 @@ public sealed class Entity
     /// <summary>
     /// Gets the entity name.
     /// </summary>
-    public string Name { get; }
+    public string Name { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether this entity should receive updates.

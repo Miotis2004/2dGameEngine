@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 namespace _2dGameEngine;
 
 /// <summary>
-/// Creates the on-disk structure for new 2dGameEngine game projects.
+/// Creates the on-disk structure for new Unity 2 C# game projects.
 /// </summary>
 public static class EditorProjectScaffolder
 {
@@ -38,6 +38,7 @@ public static class EditorProjectScaffolder
         Directory.CreateDirectory(coreDirectory);
         Directory.CreateDirectory(gameDirectory);
         Directory.CreateDirectory(Path.Combine(gameDirectory, "Scripts"));
+        Directory.CreateDirectory(Path.Combine(projectDirectory, "ProjectSettings"));
         Directory.CreateDirectory(editorDirectory);
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Sprites"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Audio"));
@@ -54,11 +55,13 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(coreDirectory, "GameSettings.cs"), CreateGameSettings(safeName, projectName));
         WriteFile(Path.Combine(gameDirectory, $"{safeName}.Game.csproj"), CreateGameProject(safeName));
         WriteFile(Path.Combine(gameDirectory, "GameBootstrapper.cs"), CreateGameBootstrapper(safeName));
+        WriteFile(Path.Combine(gameDirectory, "Scripts", "CSharpBehaviour.cs"), CreateCSharpBehaviour(safeName));
         WriteFile(Path.Combine(gameDirectory, "Scripts", "PlayerController.cs"), CreateStarterScript(safeName));
         WriteFile(Path.Combine(editorDirectory, $"{safeName}.Editor.csproj"), CreateEditorProject(safeName));
         WriteFile(Path.Combine(editorDirectory, "Program.cs"), CreateEditorProgram(safeName));
         WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(projectName));
-        WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder.\n");
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "Unity2Project.json"), CreateProjectSettings(projectName));
+        WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder. Runtime behavior is authored only in C#.\n");
 
         return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory);
     }
@@ -212,23 +215,42 @@ public static class GameBootstrapper
 }
 """;
 
-    private static string CreateStarterScript(string safeName) => $$"""
-using {{safeName}}.Core;
-
+    private static string CreateCSharpBehaviour(string safeName) => $$"""
 namespace {{safeName}}.Game.Scripts;
 
-public sealed class PlayerController
+public abstract class CSharpBehaviour
+{
+    public string DisplayName { get; set; } = string.Empty;
+
+    public virtual void Awake()
+    {
+    }
+
+    public virtual void Start()
+    {
+    }
+
+    public virtual void Update(float deltaTime)
+    {
+    }
+}
+""";
+
+    private static string CreateStarterScript(string safeName) => $$"""
+namespace {{safeName}}.Game.Scripts;
+
+public sealed class PlayerController : CSharpBehaviour
 {
     public string DisplayName { get; set; } = "Player Controller";
 
-    public void Start()
+    public override void Start()
     {
         // Initialize authored gameplay state here.
     }
 
-    public void Update(float deltaTime)
+    public override void Update(float deltaTime)
     {
-        // Add player behavior here.
+        // Add C# gameplay behavior here.
     }
 }
 """;
@@ -243,13 +265,24 @@ Console.WriteLine("{{safeName}} editor host is ready.");
     private static string CreateReadme(string projectName) => $$"""
 # {{projectName}}
 
-Created with 2dGameEngine.
+Created with Unity 2 Clone. This project uses C# as its only gameplay scripting language.
 
 ## Structure
 
 * `src` - C# solution projects for core gameplay, game code, editor host, and authored scripts.
+* `ProjectSettings/Unity2Project.json` - Project manifest that locks the scripting backend to C#.
 * `Assets` - Imported game content.
 * `Scenes` - Scene files.
+""";
+
+    private static string CreateProjectSettings(string projectName) => $$"""
+{
+  "productName": "{{projectName.Replace("\"", "\\\"")}}",
+  "editor": "Unity 2 Clone",
+  "dimension": "2D",
+  "scriptingBackend": "CSharpOnly",
+  "supportedLanguages": ["CSharp"]
+}
 """;
 
     private static string CreateDefaultScene(string projectName) => $$"""

@@ -32,7 +32,7 @@ public abstract class ScriptComponent : Component
     }
 
     /// <inheritdoc />
-    public sealed override void Update(Time time, InputState input)
+    public override void Update(Time time, InputState input)
     {
         if (!_hasStarted)
         {

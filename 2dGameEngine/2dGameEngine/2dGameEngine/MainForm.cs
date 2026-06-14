@@ -70,7 +70,7 @@ public sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "2dGameEngine - Phase 15 Editor Play Mode Isolation";
+        Text = "Unity 2 Clone - C# 2D Editor";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 600);
         ClientSize = new Size(1280, 720);
@@ -181,7 +181,7 @@ public sealed class MainForm : Form
         _refreshAssetsButton.Click += OnRefreshAssetsClicked;
         _validateAssetsButton.Click += OnValidateAssetsClicked;
         _newScriptButton.Click += OnNewScriptClicked;
-        toolStrip.Items.Add(new ToolStripLabel("2dGameEngine Editor"));
+        toolStrip.Items.Add(new ToolStripLabel("Unity 2 Clone"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
         toolStrip.Items.Add(loadProjectButton);
@@ -277,7 +277,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Scene Tools - left click selects/drags, right click opens creation and entity actions, save/load scene available",
+            Text = "Unity-style 2D Scene Tools - C# scripts only; left click selects/drags, right click creates entities",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -954,6 +954,7 @@ public sealed class MainForm : Form
         PopulateProjectAssetsPane(_currentProject);
         PopulateHierarchy(_engine.ActiveScene!);
         ShowInspector(script);
+        LogToConsole("C# is the only supported scripting language; no visual scripting or alternate language assets were generated.");
         LogToConsole($"Created script '{script.ClassName}' and attached it to '{_selectedEntity.Name}'.");
         _statusStripLabel.Text = $"Script created: {script.ScriptPath}";
     }
@@ -988,7 +989,7 @@ public sealed class MainForm : Form
     {
         using FolderBrowserDialog dialog = new()
         {
-            Description = "Select a 2dGameEngine project folder",
+            Description = "Select a Unity 2 C# project folder",
             UseDescriptionForTitle = true,
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -1030,7 +1031,7 @@ public sealed class MainForm : Form
         }
         else
         {
-            root.Nodes.Add("Use New Project to create a full C# game solution.");
+            root.Nodes.Add("Use New Project to create a Unity-style 2D C# solution.");
         }
 
         _projectAssetsTree.Nodes.Add(root);
@@ -1153,7 +1154,8 @@ public sealed class MainForm : Form
                 break;
             case AuthoredScriptComponent script:
                 _inspectorHeader.Text = script.ClassName;
-                AddInspectorRow("Type", "Authored Script");
+                AddInspectorRow("Type", "C# MonoBehaviour Script");
+                AddInspectorRow("Language", "C# only");
                 AddInspectorRow("Enabled", script.IsEnabled.ToString());
                 AddInspectorRow("Entity", script.Entity?.Name ?? "<detached>");
                 AddInspectorRow("Source", script.ScriptPath);

@@ -12,7 +12,7 @@ using _2dGameEngine.Physics;
 namespace _2dGameEngine.Scripting;
 
 /// <summary>
-/// Provides editor-facing component factories and C# script source generation helpers.
+/// Provides editor-facing component factories and Unity-style C# script source generation helpers.
 /// </summary>
 public static class ComponentAuthoring
 {
@@ -53,18 +53,18 @@ public static class ComponentAuthoring
     public static string CreateScriptSource(string projectSafeName, string className) => $$"""
 namespace {{projectSafeName}}.Game.Scripts;
 
-public sealed class {{className}}
+public sealed class {{className}} : CSharpBehaviour
 {
     public string DisplayName { get; set; } = "{{className}}";
 
-    public void Start()
+    public override void Start()
     {
         // Initialize authored gameplay state here.
     }
 
-    public void Update(float deltaTime)
+    public override void Update(float deltaTime)
     {
-        // Add gameplay behavior here.
+        // Add C# gameplay behavior here.
     }
 }
 """;

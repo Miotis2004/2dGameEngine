@@ -10,6 +10,7 @@ using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Physics;
+using _2dGameEngine.Prefabs;
 using _2dGameEngine.Scripting;
 
 namespace _2dGameEngine.Serialization;
@@ -79,16 +80,8 @@ public static class SceneSerializer
                 throw new InvalidDataException("Scene contains an entity without a name.");
             }
 
-            Entity entity = scene.CreateEntity(entityDocument.Name);
-            entity.IsEnabled = entityDocument.IsEnabled;
-            ApplyTransform(entity.Transform.Value, entityDocument.Transform);
-
-            foreach (ComponentDocument componentDocument in entityDocument.Components ?? [])
-            {
-                Component component = CreateComponent(componentDocument, assets);
-                component.IsEnabled = componentDocument.IsEnabled;
-                entity.AddComponent(component);
-            }
+            Entity entity = CreateEntity(entityDocument, assets);
+            scene.AddEntity(entity);
         }
 
         return scene;
@@ -103,16 +96,62 @@ public static class SceneSerializer
         return Deserialize(File.ReadAllText(path), assets);
     }
 
+
+    /// <summary>
+    /// Creates a deep copy of an entity hierarchy using the same stable serialization path as scenes and prefabs.
+    /// </summary>
+    public static Entity CloneEntity(Entity entity, AssetManager? assets = null)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        SceneDocument document = new(CurrentSchemaVersion, "Clone", [ToEntityDocument(entity)]);
+        string json = JsonSerializer.Serialize(document, JsonOptions);
+        return Deserialize(json, assets).Entities.Single();
+    }
+
+    private static EntityDocument ToEntityDocument(Entity entity)
+    {
+        return new EntityDocument(
+            entity.Name,
+            entity.IsEnabled,
+            ToTransformDocument(entity.Transform.Value),
+            entity.Components.Where(component => component is not TransformComponent).Select(ToComponentDocument).ToArray(),
+            entity.Children.Select(ToEntityDocument).ToArray());
+    }
+
+    private static Entity CreateEntity(EntityDocument entityDocument, AssetManager? assets)
+    {
+        if (string.IsNullOrWhiteSpace(entityDocument.Name))
+        {
+            throw new InvalidDataException("Scene contains an entity without a name.");
+        }
+
+        Entity entity = new(entityDocument.Name)
+        {
+            IsEnabled = entityDocument.IsEnabled,
+        };
+        ApplyTransform(entity.Transform.Value, entityDocument.Transform);
+
+        foreach (ComponentDocument componentDocument in entityDocument.Components ?? [])
+        {
+            Component component = CreateComponent(componentDocument, assets);
+            component.IsEnabled = componentDocument.IsEnabled;
+            entity.AddComponent(component);
+        }
+
+        foreach (EntityDocument childDocument in entityDocument.Children ?? [])
+        {
+            entity.AddChild(CreateEntity(childDocument, assets));
+        }
+
+        return entity;
+    }
+
     private static SceneDocument ToDocument(Scene scene)
     {
         return new SceneDocument(
             CurrentSchemaVersion,
             scene.Name,
-            scene.Entities.Select(entity => new EntityDocument(
-                entity.Name,
-                entity.IsEnabled,
-                ToTransformDocument(entity.Transform.Value),
-                entity.Components.Where(component => component is not TransformComponent).Select(ToComponentDocument).ToArray())).ToArray());
+            scene.Entities.Where(entity => entity.Parent is null).Select(ToEntityDocument).ToArray());
     }
 
     private static ComponentDocument ToComponentDocument(Component component)
@@ -130,6 +169,7 @@ public static class SceneSerializer
             Animator animator => ToAnimatorDocument(animator),
             Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
             AuthoredScriptComponent script => new ComponentDocument("AuthoredScript", ScriptClass: script.ClassName, ScriptPath: script.ScriptPath, ScriptDescription: script.Description, ScriptProperties: script.Properties.OrderBy(pair => pair.Key).Select(pair => new ScriptPropertyDocument(pair.Key, pair.Value)).ToArray()),
+            PrefabInstanceComponent prefab => new ComponentDocument("PrefabInstance", PrefabPath: prefab.PrefabPath, PrefabIsConnected: prefab.IsConnected, PrefabOverrides: prefab.Overrides.Select(prefabOverride => new PrefabOverrideDocument(prefabOverride.EntityPath, prefabOverride.PropertyPath, prefabOverride.Value)).ToArray()),
             _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
         };
 
@@ -171,8 +211,27 @@ public static class SceneSerializer
             "Animator" => CreateAnimator(document, assets),
             "Tilemap" => CreateTilemap(document, assets),
             "AuthoredScript" => CreateAuthoredScript(document),
+            "PrefabInstance" => CreatePrefabInstance(document),
             _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
         };
+    }
+
+
+    private static PrefabInstanceComponent CreatePrefabInstance(ComponentDocument document)
+    {
+        if (string.IsNullOrWhiteSpace(document.PrefabPath))
+        {
+            throw new InvalidDataException("Serialized prefab instances must specify a prefabPath.");
+        }
+
+        PrefabInstanceComponent instance = new(document.PrefabPath);
+        instance.SetOverrides((document.PrefabOverrides ?? []).Select(prefabOverride => new PrefabOverride(prefabOverride.EntityPath, prefabOverride.PropertyPath, prefabOverride.Value)));
+        if (document.PrefabIsConnected == false)
+        {
+            instance.Unpack();
+        }
+
+        return instance;
     }
 
     private static AuthoredScriptComponent CreateAuthoredScript(ComponentDocument document)
@@ -361,7 +420,7 @@ public static class SceneSerializer
 
     private sealed record SceneDocument(int SchemaVersion, string Name, EntityDocument[]? Entities);
 
-    private sealed record EntityDocument(string Name, bool IsEnabled, TransformDocument? Transform, ComponentDocument[]? Components);
+    private sealed record EntityDocument(string Name, bool IsEnabled, TransformDocument? Transform, ComponentDocument[]? Components, EntityDocument[]? Children = null);
 
     private sealed record TransformDocument(Vector2Document Position, float Rotation, Vector2Document Scale);
 
@@ -372,6 +431,8 @@ public static class SceneSerializer
     private sealed record TileDefinitionDocument(int Id, string Color, bool IsSolid, FrameReferenceDocument? Frame);
 
     private sealed record ScriptPropertyDocument(string Name, string Value);
+
+    private sealed record PrefabOverrideDocument(string EntityPath, string PropertyPath, string? Value);
 
     private sealed record ComponentDocument(
         string Type,
@@ -402,5 +463,8 @@ public static class SceneSerializer
         string? ScriptClass = null,
         string? ScriptPath = null,
         string? ScriptDescription = null,
-        ScriptPropertyDocument[]? ScriptProperties = null);
+        ScriptPropertyDocument[]? ScriptProperties = null,
+        string? PrefabPath = null,
+        bool? PrefabIsConnected = null,
+        PrefabOverrideDocument[]? PrefabOverrides = null);
 }

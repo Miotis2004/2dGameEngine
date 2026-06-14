@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 
@@ -10,6 +11,7 @@ namespace _2dGameEngine.Animation;
 public sealed class AnimationPlayer : Component
 {
     private TimeSpan _elapsed;
+    private TimeSpan _previousElapsed;
 
     public AnimationPlayer(AnimationClip clip)
     {
@@ -29,6 +31,7 @@ public sealed class AnimationPlayer : Component
         if (!ReferenceEquals(Clip, clip) || restart)
         {
             Clip = clip;
+            _previousElapsed = TimeSpan.Zero;
             _elapsed = TimeSpan.Zero;
         }
 
@@ -43,6 +46,7 @@ public sealed class AnimationPlayer : Component
     public void Stop()
     {
         IsPlaying = false;
+        _previousElapsed = TimeSpan.Zero;
         _elapsed = TimeSpan.Zero;
         ApplyCurrentFrame();
     }
@@ -59,6 +63,7 @@ public sealed class AnimationPlayer : Component
             return;
         }
 
+        _previousElapsed = _elapsed;
         _elapsed += TimeSpan.FromTicks((long)(time.DeltaTime.Ticks * PlaybackSpeed));
         if (!Clip.IsLooping && _elapsed >= Clip.Duration)
         {
@@ -66,7 +71,32 @@ public sealed class AnimationPlayer : Component
             IsPlaying = false;
         }
 
+        DispatchEvents();
         ApplyCurrentFrame();
+    }
+
+    private void DispatchEvents()
+    {
+        if (Entity is null || Clip.Events.Count == 0)
+        {
+            return;
+        }
+
+        TimeSpan start = Clip.IsLooping && Clip.Duration > TimeSpan.Zero ? TimeSpan.FromTicks(_previousElapsed.Ticks % Clip.Duration.Ticks) : _previousElapsed;
+        TimeSpan end = Clip.IsLooping && Clip.Duration > TimeSpan.Zero ? TimeSpan.FromTicks(_elapsed.Ticks % Clip.Duration.Ticks) : _elapsed;
+        foreach (AnimationEvent animationEvent in Clip.Events)
+        {
+            bool crossed = start <= end
+                ? animationEvent.Time > start && animationEvent.Time <= end
+                : animationEvent.Time > start || animationEvent.Time <= end;
+            if (crossed)
+            {
+                foreach (IAnimationEventReceiver receiver in Entity.Components.OfType<IAnimationEventReceiver>())
+                {
+                    receiver.OnAnimationEvent(animationEvent);
+                }
+            }
+        }
     }
 
     private void ApplyCurrentFrame()

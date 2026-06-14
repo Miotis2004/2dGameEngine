@@ -16,6 +16,7 @@ public sealed class AssetManager : IDisposable
     private readonly Dictionary<string, TextureAsset> _textures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SpriteSheetAsset> _spriteSheets = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, AnimationClip> _animationClips = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AnimatorController> _animatorControllers = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AssetManager"/> class.
@@ -147,9 +148,46 @@ public sealed class AssetManager : IDisposable
             frames.Add(new AnimationFrame(spriteSheet.GetFrame(frame.Sprite), TimeSpan.FromMilliseconds(frame.DurationMilliseconds)));
         }
 
-        AnimationClip clip = new(document.Name, frames, document.Loop, normalizedPath);
+        AnimationClip clip = new(document.Name, frames, document.Loop, normalizedPath, (document.Events ?? []).Select(animationEvent =>
+            new AnimationEvent(animationEvent.Name, TimeSpan.FromMilliseconds(animationEvent.TimeMilliseconds), animationEvent.Arguments)));
         _animationClips[normalizedPath] = clip;
         return clip;
+    }
+
+    /// <summary>
+    /// Loads animator controller metadata and returns the cached instance on subsequent calls.
+    /// </summary>
+    public AnimatorController LoadAnimatorController(string assetPath)
+    {
+        string normalizedPath = NormalizeAssetPath(assetPath);
+        if (_animatorControllers.TryGetValue(normalizedPath, out AnimatorController? cached))
+        {
+            return cached;
+        }
+
+        string fullPath = ResolvePath(normalizedPath);
+        AnimatorControllerDocument document = JsonSerializer.Deserialize<AnimatorControllerDocument>(File.ReadAllText(fullPath), JsonOptions)
+            ?? throw new InvalidDataException($"Animator controller '{normalizedPath}' is empty or invalid.");
+
+        AnimatorController controller = new(document.Name, document.DefaultState, normalizedPath);
+        foreach (AnimatorParameterDocument parameter in document.Parameters ?? [])
+        {
+            controller.AddParameter(new AnimatorParameter(parameter.Name, parameter.Type, parameter.FloatValue, parameter.IntValue, parameter.BoolValue));
+        }
+
+        foreach (AnimatorStateDocument state in document.States ?? [])
+        {
+            controller.AddState(new AnimatorState(state.Name, LoadAnimationClip(CombineAssetPath(Path.GetDirectoryName(normalizedPath), state.Clip)), state.Speed <= 0 ? 1.0f : state.Speed));
+        }
+
+        foreach (AnimatorTransitionDocument transition in document.Transitions ?? [])
+        {
+            controller.AddTransition(new AnimatorTransition(transition.FromState, transition.ToState, TimeSpan.FromMilliseconds(Math.Max(0, transition.ExitTimeMilliseconds)), transition.Conditions ?? []));
+        }
+
+        controller.GetState(controller.DefaultState);
+        _animatorControllers[normalizedPath] = controller;
+        return controller;
     }
 
     /// <summary>
@@ -165,6 +203,7 @@ public sealed class AssetManager : IDisposable
         _textures.Clear();
         _spriteSheets.Clear();
         _animationClips.Clear();
+        _animatorControllers.Clear();
     }
 
     /// <inheritdoc />
@@ -281,7 +320,17 @@ public sealed class AssetManager : IDisposable
 
     private sealed record SpriteFrameDocument(string Name, int X, int Y, int Width, int Height);
 
-    private sealed record AnimationClipDocument(string Name, string SpriteSheet, bool Loop, AnimationFrameDocument[] Frames);
+    private sealed record AnimationClipDocument(string Name, string SpriteSheet, bool Loop, AnimationFrameDocument[] Frames, AnimationEventDocument[]? Events);
 
     private sealed record AnimationFrameDocument(string Sprite, double DurationMilliseconds);
+
+    private sealed record AnimationEventDocument(string Name, double TimeMilliseconds, Dictionary<string, string>? Arguments);
+
+    private sealed record AnimatorControllerDocument(string Name, string DefaultState, AnimatorParameterDocument[]? Parameters, AnimatorStateDocument[]? States, AnimatorTransitionDocument[]? Transitions);
+
+    private sealed record AnimatorParameterDocument(string Name, AnimatorParameterType Type, float FloatValue, int IntValue, bool BoolValue);
+
+    private sealed record AnimatorStateDocument(string Name, string Clip, float Speed);
+
+    private sealed record AnimatorTransitionDocument(string FromState, string ToState, double ExitTimeMilliseconds, AnimatorCondition[]? Conditions);
 }

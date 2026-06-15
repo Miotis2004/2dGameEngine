@@ -64,6 +64,8 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _refreshAssetsButton;
     private readonly ToolStripButton _validateAssetsButton;
     private readonly ToolStripButton _buildProjectButton;
+    private readonly ToolStripButton _installPackageButton;
+    private readonly ToolStripButton _refreshExtensionsButton;
     private readonly ToolStripDropDownButton _addComponentButton;
     private readonly ToolStripButton _newScriptButton;
     private readonly ToolStripButton _checkScriptsButton;
@@ -94,6 +96,7 @@ public sealed class MainForm : Form
     private CreatedProject? _currentProject;
     private AssetPipeline? _assetPipeline;
     private ScriptDebugSession? _scriptDebugSession;
+    private EditorExtensibilityService? _extensibilityService;
     private Scene _editScene = null!;
     private string? _playModeSnapshot;
     private bool _isPlayMode;
@@ -217,6 +220,14 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _installPackageButton = new ToolStripButton("Install Package")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _refreshExtensionsButton = new ToolStripButton("Extensions")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addComponentButton = new ToolStripDropDownButton("Add Component")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -256,6 +267,8 @@ public sealed class MainForm : Form
         _refreshAssetsButton.Click += OnRefreshAssetsClicked;
         _validateAssetsButton.Click += OnValidateAssetsClicked;
         _buildProjectButton.Click += OnBuildProjectClicked;
+        _installPackageButton.Click += OnInstallPackageClicked;
+        _refreshExtensionsButton.Click += OnRefreshExtensionsClicked;
         _newScriptButton.Click += OnNewScriptClicked;
         _checkScriptsButton.Click += OnCheckScriptsClicked;
         _hotReloadButton.Click += OnHotReloadClicked;
@@ -292,6 +305,8 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_validateAssetsButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_buildProjectButton);
+        toolStrip.Items.Add(_installPackageButton);
+        toolStrip.Items.Add(_refreshExtensionsButton);
 
         StatusStrip statusStrip = new();
         _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
@@ -564,6 +579,8 @@ public sealed class MainForm : Form
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
         _buildProjectButton.Click -= OnBuildProjectClicked;
+        _installPackageButton.Click -= OnInstallPackageClicked;
+        _refreshExtensionsButton.Click -= OnRefreshExtensionsClicked;
         _newScriptButton.Click -= OnNewScriptClicked;
         _checkScriptsButton.Click -= OnCheckScriptsClicked;
         _hotReloadButton.Click -= OnHotReloadClicked;
@@ -1836,6 +1853,8 @@ public sealed class MainForm : Form
             _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName);
             _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
             _scriptDebugSession = ScriptDebugSession.Load(_currentProject.ProjectDirectory);
+            _extensibilityService = new EditorExtensibilityService(_currentProject);
+            LogExtensibilityCatalog(_extensibilityService.Refresh());
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Created project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
@@ -1867,6 +1886,8 @@ public sealed class MainForm : Form
             _currentProject = EditorProjectScaffolder.LoadProject(dialog.SelectedPath);
             _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
             _scriptDebugSession = ScriptDebugSession.Load(_currentProject.ProjectDirectory);
+            _extensibilityService = new EditorExtensibilityService(_currentProject);
+            LogExtensibilityCatalog(_extensibilityService.Refresh());
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Loaded project '{_currentProject.DisplayName}' from {_currentProject.ProjectDirectory}");
@@ -1887,6 +1908,21 @@ public sealed class MainForm : Form
         {
             root.Nodes.Add(new TreeNode($"Solution: {Path.GetFileName(project.SolutionPath)}") { Tag = project.SolutionPath });
             root.Nodes.Add(new TreeNode("Scenes") { Tag = project.ScenesDirectory });
+            TreeNode packagesNode = new("Packages") { Tag = project.PackagesDirectory };
+            TreeNode extensionsNode = new("Extensions") { Tag = project.ExtensionsDirectory };
+            EditorExtensibilityCatalog catalog = (_extensibilityService ??= new EditorExtensibilityService(project)).Refresh();
+            foreach (EditorPackageInfo package in catalog.Packages)
+            {
+                packagesNode.Nodes.Add(new TreeNode($"{package.Manifest.DisplayName} ({package.Manifest.Version})") { Tag = package });
+            }
+
+            foreach (EditorExtensionInfo extension in catalog.Extensions)
+            {
+                extensionsNode.Nodes.Add(new TreeNode($"{(extension.Enabled ? "Enabled" : "Disabled")}: {extension.Manifest.DisplayName}") { Tag = extension });
+            }
+
+            root.Nodes.Add(packagesNode);
+            root.Nodes.Add(extensionsNode);
             TreeNode assetsNode = new("Assets") { Tag = project.AssetsDirectory };
             foreach (AssetMetadata asset in (_assetPipeline ??= new AssetPipeline(project.AssetsDirectory)).Refresh())
             {
@@ -2016,6 +2052,61 @@ public sealed class MainForm : Form
         }
     }
 
+    private void OnInstallPackageClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before installing packages.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using FolderBrowserDialog dialog = new()
+        {
+            Description = "Select a local package folder containing package.json",
+            InitialDirectory = Directory.Exists(_currentProject.PackagesDirectory) ? _currentProject.PackagesDirectory : _currentProject.ProjectDirectory,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            _extensibilityService ??= new EditorExtensibilityService(_currentProject);
+            EditorPackageInfo package = _extensibilityService.InstallLocalPackage(dialog.SelectedPath);
+            LogToConsole($"Installed package '{package.Manifest.DisplayName}' ({package.Manifest.Id}) from {dialog.SelectedPath}");
+            LogExtensibilityCatalog(_extensibilityService.Refresh());
+            PopulateProjectAssetsPane(_currentProject);
+            _statusStripLabel.Text = $"Package installed: {package.Manifest.Id}";
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Package install failed: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Package Install Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void OnRefreshExtensionsClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before refreshing extensions.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _extensibilityService ??= new EditorExtensibilityService(_currentProject);
+        EditorExtensibilityCatalog catalog = _extensibilityService.Refresh();
+        LogExtensibilityCatalog(catalog);
+        PopulateProjectAssetsPane(_currentProject);
+        _statusStripLabel.Text = $"Extensions refreshed: {catalog.Extensions.Count}";
+    }
+
+    private void LogExtensibilityCatalog(EditorExtensibilityCatalog catalog)
+    {
+        LogToConsole($"Package manager found {catalog.Packages.Count} package(s) and {catalog.Extensions.Count} editor extension(s).");
+        foreach (EditorExtensionInfo extension in catalog.Extensions)
+        {
+            LogToConsole($"Extension {(extension.Enabled ? "enabled" : "disabled")}: {extension.Manifest.DisplayName} [{extension.Manifest.EntryPoint}]");
+        }
+    }
+
     private void OnImportAssetClicked(object? sender, EventArgs e)
     {
         if (_currentProject is null)
@@ -2066,6 +2157,18 @@ public sealed class MainForm : Form
 
     private void OnProjectAssetSelectionChanged(object? sender, TreeViewEventArgs e)
     {
+        if (e.Node?.Tag is EditorPackageInfo package)
+        {
+            ShowInspector(package);
+            return;
+        }
+
+        if (e.Node?.Tag is EditorExtensionInfo extension)
+        {
+            ShowInspector(extension);
+            return;
+        }
+
         if (e.Node?.Tag is not AssetMetadata asset) return;
         ShowInspector(asset);
         _assetPreviewBox.Image?.Dispose();
@@ -2140,6 +2243,22 @@ public sealed class MainForm : Form
                 AddInspectorRow("Rotation", FormattableString.Invariant($"{entity.Transform.Value.Rotation:0.###} rad"));
                 AddInspectorRow("Scale", FormattableString.Invariant($"{scale.X:0.##}, {scale.Y:0.##}"));
                 AddInspectorRow("Components", entity.Components.Count.ToString());
+                break;
+            case EditorPackageInfo package:
+                _inspectorHeader.Text = package.Manifest.DisplayName;
+                AddInspectorRow("Type", "Package");
+                AddInspectorRow("Id", package.Manifest.Id);
+                AddInspectorRow("Version", package.Manifest.Version);
+                AddInspectorRow("Path", package.PackageDirectory);
+                AddInspectorRow("Extensions", string.Join(", ", package.Manifest.ExtensionIds));
+                break;
+            case EditorExtensionInfo extension:
+                _inspectorHeader.Text = extension.Manifest.DisplayName;
+                AddInspectorRow("Type", "Editor Extension");
+                AddInspectorRow("Id", extension.Manifest.Id);
+                AddInspectorRow("Enabled", extension.Enabled.ToString());
+                AddInspectorRow("Entry Point", extension.Manifest.EntryPoint);
+                AddInspectorRow("Menus", string.Join(", ", extension.Manifest.Menus));
                 break;
             case AssetMetadata asset:
                 _inspectorHeader.Text = Path.GetFileName(asset.RelativePath);

@@ -34,6 +34,8 @@ public static class EditorProjectScaffolder
         string editorDirectory = Path.Combine(sourceDirectory, $"{safeName}.Editor");
         string assetsDirectory = Path.Combine(projectDirectory, "Assets");
         string scenesDirectory = Path.Combine(projectDirectory, "Scenes");
+        string packagesDirectory = Path.Combine(projectDirectory, "Packages");
+        string extensionsDirectory = Path.Combine(projectDirectory, "Extensions");
 
         Directory.CreateDirectory(coreDirectory);
         Directory.CreateDirectory(gameDirectory);
@@ -44,6 +46,9 @@ public static class EditorProjectScaffolder
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Sprites"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Audio"));
         Directory.CreateDirectory(scenesDirectory);
+        Directory.CreateDirectory(packagesDirectory);
+        Directory.CreateDirectory(extensionsDirectory);
+        Directory.CreateDirectory(Path.Combine(extensionsDirectory, "SampleInspector"));
 
         string coreProjectId = Guid.NewGuid().ToString("B").ToUpperInvariant();
         string gameProjectId = Guid.NewGuid().ToString("B").ToUpperInvariant();
@@ -64,9 +69,13 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(projectName));
         WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "Unity2Project.json"), CreateProjectSettings(projectName));
         WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "ScriptTooling.json"), CreateScriptToolingSettings());
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "EditorExtensibility.json"), CreateEditorExtensibilitySettings());
+        WriteFile(Path.Combine(packagesDirectory, "README.md"), CreatePackagesReadme());
+        WriteFile(Path.Combine(extensionsDirectory, "README.md"), CreateExtensionsReadme());
+        WriteFile(Path.Combine(extensionsDirectory, "SampleInspector", "extension.json"), CreateSampleExtensionManifest());
         WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder. Runtime behavior is authored only in C#.\n");
 
-        return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory);
+        return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory, packagesDirectory, extensionsDirectory);
     }
 
 
@@ -94,10 +103,14 @@ public static class EditorProjectScaffolder
         string safeName = Path.GetFileNameWithoutExtension(solutions[0]);
         string assetsDirectory = Path.Combine(fullProjectDirectory, "Assets");
         string scenesDirectory = Path.Combine(fullProjectDirectory, "Scenes");
+        string packagesDirectory = Path.Combine(fullProjectDirectory, "Packages");
+        string extensionsDirectory = Path.Combine(fullProjectDirectory, "Extensions");
         Directory.CreateDirectory(assetsDirectory);
         Directory.CreateDirectory(scenesDirectory);
+        Directory.CreateDirectory(packagesDirectory);
+        Directory.CreateDirectory(extensionsDirectory);
 
-        return new CreatedProject(safeName, safeName, fullProjectDirectory, solutions[0], assetsDirectory, scenesDirectory);
+        return new CreatedProject(safeName, safeName, fullProjectDirectory, solutions[0], assetsDirectory, scenesDirectory, packagesDirectory, extensionsDirectory);
     }
 
     private static string ToSafeName(string projectName)
@@ -289,6 +302,40 @@ Console.WriteLine("{{safeName}} editor host is ready.");
 }
 """;
 
+    private static string CreateEditorExtensibilitySettings() => """
+{
+  "enabledExtensions": [
+    "sample.inspector"
+  ],
+  "installedPackages": []
+}
+""";
+
+    private static string CreatePackagesReadme() => """
+# Packages
+
+Install local packages here. Each package folder can include a `package.json` manifest with an id, display name, version, description, extension ids, and asset roots.
+""";
+
+    private static string CreateExtensionsReadme() => """
+# Extensions
+
+Editor extensions are discovered from `extension.json` files. Extensions describe C# entry points, menu contributions, and default enabled state.
+""";
+
+    private static string CreateSampleExtensionManifest() => """
+{
+  "id": "sample.inspector",
+  "displayName": "Sample Inspector Extension",
+  "entryPoint": "SampleInspector.SampleInspectorExtension",
+  "version": "1.0.0",
+  "enabledByDefault": true,
+  "menus": [
+    "Tools/Sample Inspector"
+  ]
+}
+""";
+
     private static string CreateReadme(string projectName) => $$"""
 # {{projectName}}
 
@@ -300,6 +347,8 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
 * `ProjectSettings/Unity2Project.json` - Project manifest that locks the scripting backend to C#.
 * `Assets` - Imported game content.
 * `Scenes` - Scene files.
+* `Packages` - Installed local editor/runtime packages with `package.json` manifests.
+* `Extensions` - C# editor extension manifests and source files.
 """;
 
     private static string CreateProjectSettings(string projectName) => $$"""
@@ -310,7 +359,9 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
   "scriptingBackend": "CSharpOnly",
   "supportedLanguages": ["CSharp"],
   "scriptDebugging": true,
-  "hotReload": true
+  "hotReload": true,
+  "editorExtensibility": true,
+  "packageManagement": true
 }
 """;
 
@@ -326,4 +377,4 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
 /// <summary>
 /// Describes a project created from the editor shell.
 /// </summary>
-public sealed record CreatedProject(string DisplayName, string SafeName, string ProjectDirectory, string SolutionPath, string AssetsDirectory, string ScenesDirectory);
+public sealed record CreatedProject(string DisplayName, string SafeName, string ProjectDirectory, string SolutionPath, string AssetsDirectory, string ScenesDirectory, string PackagesDirectory, string ExtensionsDirectory);

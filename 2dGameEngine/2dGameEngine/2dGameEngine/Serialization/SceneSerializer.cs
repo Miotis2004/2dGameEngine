@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Windows.Forms;
 using _2dGameEngine.Animation;
 using _2dGameEngine.Content;
 using _2dGameEngine.Core;
@@ -12,6 +13,7 @@ using _2dGameEngine.Graphics;
 using _2dGameEngine.Physics;
 using _2dGameEngine.Prefabs;
 using _2dGameEngine.Scripting;
+using _2dGameEngine.UI;
 
 namespace _2dGameEngine.Serialization;
 
@@ -172,6 +174,14 @@ public static class SceneSerializer
             PrefabInstanceComponent prefab => new ComponentDocument("PrefabInstance", PrefabPath: prefab.PrefabPath, PrefabIsConnected: prefab.IsConnected, PrefabOverrides: prefab.Overrides.Select(prefabOverride => new PrefabOverrideDocument(prefabOverride.EntityPath, prefabOverride.PropertyPath, prefabOverride.Value)).ToArray()),
             Light2D light => new ComponentDocument("Light2D", LightType: light.LightType.ToString(), Color: ToColorString(light.Color), Intensity: light.Intensity, Radius: light.Radius, SpotAngle: light.SpotAngle, RenderLayer: light.LayerMask.ToString()),
             SortingGroup2D group => new ComponentDocument("SortingGroup2D", SortingOrder: group.SortingOrderOffset, RenderLayer: group.Layer.ToString()),
+            CanvasComponent canvas => new ComponentDocument("Canvas", SortingOrder: canvas.SortingOrder, Text: canvas.RenderMode.ToString(), Size: new Vector2Document(canvas.ReferenceResolution.Width, canvas.ReferenceResolution.Height), Intensity: canvas.ScaleFactor),
+            RectTransformComponent rect => new ComponentDocument("RectTransform", Position: ToVectorDocument(rect.AnchoredPosition), Size: ToVectorDocument(rect.Size), Text: rect.Anchor.ToString(), Velocity: ToVectorDocument(rect.Pivot)),
+            UIPanelComponent panel => new ComponentDocument("UIPanel", Color: ToColorString(panel.BackgroundColor), OutlineColor: ToColorString(panel.BorderColor), Radius: panel.BorderThickness),
+            UIImageComponent image => new ComponentDocument("UIImage", Color: ToColorString(image.Tint), ScriptPath: image.SourcePath),
+            UITextComponent text => new ComponentDocument("UIText", Text: text.Text, ScriptClass: text.FontFamily, FontSize: text.FontSize, Color: ToColorString(text.Color), ScriptDescription: text.Alignment.ToString()),
+            UIButtonComponent button => new ComponentDocument("UIButton", Text: button.Label, Color: ToColorString(button.NormalColor), OutlineColor: ToColorString(button.HighlightedColor), ScriptDescription: button.ActionName),
+            UISliderComponent slider => new ComponentDocument("UISlider", Speed: slider.Value, MoveSpeed: slider.MinValue, JumpSpeed: slider.MaxValue, Color: ToColorString(slider.FillColor)),
+            UILayoutGroupComponent layout => new ComponentDocument("UILayoutGroup", Text: layout.Direction.ToString(), Speed: layout.Spacing),
             _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
         };
 
@@ -216,6 +226,14 @@ public static class SceneSerializer
             "PrefabInstance" => CreatePrefabInstance(document),
             "Light2D" => CreateLight2D(document),
             "SortingGroup2D" => new SortingGroup2D { SortingOrderOffset = document.SortingOrder ?? 0, Layer = ParseRenderLayer(document.RenderLayer) },
+            "Canvas" => new CanvasComponent { SortingOrder = document.SortingOrder ?? 1000, RenderMode = Enum.TryParse(document.Text, true, out CanvasRenderMode mode) ? mode : CanvasRenderMode.ScreenSpaceOverlay, ReferenceResolution = ToSizeF(FromVectorDocument(document.Size, new Vector2(1280, 720))), ScaleFactor = document.Intensity ?? 1.0f },
+            "RectTransform" => new RectTransformComponent { AnchoredPosition = FromVectorDocument(document.Position), Size = FromVectorDocument(document.Size, new Vector2(160, 48)), Anchor = Enum.TryParse(document.Text, true, out UIAnchorPreset anchor) ? anchor : UIAnchorPreset.Center, Pivot = FromVectorDocument(document.Velocity, new Vector2(0.5f, 0.5f)) },
+            "UIPanel" => new UIPanelComponent { BackgroundColor = FromColorString(document.Color ?? "#BE181C24"), BorderColor = FromColorString(document.OutlineColor ?? "#DC5A6982"), BorderThickness = document.Radius ?? 1.0f },
+            "UIImage" => new UIImageComponent { Tint = FromColorString(document.Color ?? "#FFFFFFFF"), SourcePath = document.ScriptPath },
+            "UIText" => new UITextComponent { Text = document.Text ?? "Text", FontFamily = document.ScriptClass ?? "Segoe UI", FontSize = document.FontSize ?? 16.0f, Color = FromColorString(document.Color ?? "#FFFFFFFF"), Alignment = Enum.TryParse(document.ScriptDescription, true, out ContentAlignment alignment) ? alignment : ContentAlignment.MiddleCenter },
+            "UIButton" => new UIButtonComponent { Label = document.Text ?? "Button", NormalColor = FromColorString(document.Color ?? "#E6384868"), HighlightedColor = FromColorString(document.OutlineColor ?? "#F55470A4"), ActionName = document.ScriptDescription },
+            "UISlider" => new UISliderComponent { Value = document.Speed ?? 0.5f, MinValue = document.MoveSpeed ?? 0.0f, MaxValue = document.JumpSpeed ?? 1.0f, FillColor = FromColorString(document.Color ?? "#FF00BFFF") },
+            "UILayoutGroup" => new UILayoutGroupComponent { Direction = Enum.TryParse(document.Text, true, out UILayoutDirection direction) ? direction : UILayoutDirection.Vertical, Spacing = document.Speed ?? 8.0f },
             _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
         };
     }
@@ -444,6 +462,8 @@ public static class SceneSerializer
 
     private static Vector2Document ToVectorDocument(Vector2 vector) => new(vector.X, vector.Y);
 
+    private static SizeF ToSizeF(Vector2 vector) => new(vector.X, vector.Y);
+
     private static Vector2 FromVectorDocument(Vector2Document? document, Vector2 defaultValue = default)
     {
         return document is null ? defaultValue : new Vector2(document.X, document.Y);
@@ -517,5 +537,8 @@ public static class SceneSerializer
         string? LightType = null,
         float? Intensity = null,
         float? Radius = null,
-        float? SpotAngle = null);
+        float? SpotAngle = null,
+        Vector2Document? Position = null,
+        string? Text = null,
+        float? FontSize = null);
 }

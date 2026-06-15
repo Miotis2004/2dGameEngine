@@ -64,6 +64,9 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _buildProjectButton;
     private readonly ToolStripDropDownButton _addComponentButton;
     private readonly ToolStripButton _newScriptButton;
+    private readonly ToolStripButton _checkScriptsButton;
+    private readonly ToolStripButton _hotReloadButton;
+    private readonly ToolStripButton _debugScriptsButton;
     private readonly PictureBox _assetPreviewBox;
     private readonly ListBox _tilePaletteList;
     private readonly ContextMenuStrip _sceneContextMenu;
@@ -88,6 +91,7 @@ public sealed class MainForm : Form
     private Point _panelDragOffset;
     private CreatedProject? _currentProject;
     private AssetPipeline? _assetPipeline;
+    private ScriptDebugSession? _scriptDebugSession;
     private Scene _editScene = null!;
     private string? _playModeSnapshot;
     private bool _isPlayMode;
@@ -222,6 +226,18 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _checkScriptsButton = new ToolStripButton("Check Scripts")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _hotReloadButton = new ToolStripButton("Hot Reload")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _debugScriptsButton = new ToolStripButton("Debug Scripts")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addSpriteButton.Click += OnAddSpriteClicked;
         _addTilemapButton.Click += OnAddTilemapClicked;
         _tilePaintButton.Click += OnTilePaintClicked;
@@ -234,6 +250,9 @@ public sealed class MainForm : Form
         _validateAssetsButton.Click += OnValidateAssetsClicked;
         _buildProjectButton.Click += OnBuildProjectClicked;
         _newScriptButton.Click += OnNewScriptClicked;
+        _checkScriptsButton.Click += OnCheckScriptsClicked;
+        _hotReloadButton.Click += OnHotReloadClicked;
+        _debugScriptsButton.Click += OnDebugScriptsClicked;
         toolStrip.Items.Add(new ToolStripLabel("Unity 2 Clone"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
@@ -256,6 +275,9 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_loadSceneButton);
         toolStrip.Items.Add(_addComponentButton);
         toolStrip.Items.Add(_newScriptButton);
+        toolStrip.Items.Add(_checkScriptsButton);
+        toolStrip.Items.Add(_hotReloadButton);
+        toolStrip.Items.Add(_debugScriptsButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_importAssetButton);
         toolStrip.Items.Add(_refreshAssetsButton);
@@ -337,7 +359,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Phase 23 build tools - configure Windows desktop builds, collect scenes/assets, and export runnable folders",
+            Text = "Phase 24 C# tooling - check scripts, prepare hot reload, and persist managed debug settings",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -511,6 +533,9 @@ public sealed class MainForm : Form
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
         _buildProjectButton.Click -= OnBuildProjectClicked;
         _newScriptButton.Click -= OnNewScriptClicked;
+        _checkScriptsButton.Click -= OnCheckScriptsClicked;
+        _hotReloadButton.Click -= OnHotReloadClicked;
+        _debugScriptsButton.Click -= OnDebugScriptsClicked;
         _audioMixerList.SelectedIndexChanged -= OnAudioMixerSelectionChanged;
         _audioVolumeSlider.Scroll -= OnAudioVolumeSliderScrolled;
         _undoButton.Click -= OnUndoClicked;
@@ -1169,6 +1194,9 @@ public sealed class MainForm : Form
         _duplicateButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _checkScriptsButton.Enabled = _currentProject is not null;
+        _hotReloadButton.Enabled = _currentProject is not null;
+        _debugScriptsButton.Enabled = _currentProject is not null;
         _sceneEditorViewport.Invalidate();
     }
 
@@ -1688,6 +1716,7 @@ public sealed class MainForm : Form
         {
             _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName);
             _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
+            _scriptDebugSession = ScriptDebugSession.Load(_currentProject.ProjectDirectory);
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Created project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
@@ -1718,6 +1747,7 @@ public sealed class MainForm : Form
         {
             _currentProject = EditorProjectScaffolder.LoadProject(dialog.SelectedPath);
             _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
+            _scriptDebugSession = ScriptDebugSession.Load(_currentProject.ProjectDirectory);
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Loaded project '{_currentProject.DisplayName}' from {_currentProject.ProjectDirectory}");
@@ -1753,6 +1783,70 @@ public sealed class MainForm : Form
 
         _projectAssetsTree.Nodes.Add(root);
         root.ExpandAll();
+    }
+
+
+    private void OnCheckScriptsClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before checking scripts.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _statusStripLabel.Text = "Checking C# scripts...";
+        ScriptToolingResult result = ScriptTooling.CheckScripts(_currentProject.SolutionPath);
+        ReportScriptToolingResult("Script check", result);
+    }
+
+    private void OnHotReloadClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before preparing hot reload.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _scriptDebugSession ??= ScriptDebugSession.Load(_currentProject.ProjectDirectory);
+        _statusStripLabel.Text = "Preparing C# hot reload...";
+        ScriptToolingResult result = ScriptTooling.PrepareHotReload(_currentProject.SolutionPath, _scriptDebugSession);
+        ReportScriptToolingResult("Hot reload", result);
+    }
+
+    private void OnDebugScriptsClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before configuring script debugging.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _scriptDebugSession ??= ScriptDebugSession.Load(_currentProject.ProjectDirectory);
+        string launchSettingsPath = ScriptTooling.CreateLaunchSettings(_currentProject.ProjectDirectory, _currentProject.SafeName);
+        string? firstScript = Directory.Exists(Path.Combine(_currentProject.ProjectDirectory, "src", $"{_currentProject.SafeName}.Game", "Scripts"))
+            ? Directory.GetFiles(Path.Combine(_currentProject.ProjectDirectory, "src", $"{_currentProject.SafeName}.Game", "Scripts"), "*.cs", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
+            : null;
+        if (firstScript is not null)
+        {
+            _scriptDebugSession.AddOrUpdateBreakpoint(firstScript, 1);
+        }
+
+        _scriptDebugSession.Save();
+        PopulateProjectAssetsPane(_currentProject);
+        LogToConsole($"Script debugging configured with managed launch profile: {launchSettingsPath}");
+        LogToConsole($"Tracked {_scriptDebugSession.Breakpoints.Count} script breakpoint(s) in {_scriptDebugSession.SettingsPath}");
+        _statusStripLabel.Text = "Script debugging configured";
+    }
+
+    private void ReportScriptToolingResult(string operation, ScriptToolingResult result)
+    {
+        foreach (ScriptDiagnostic diagnostic in result.Diagnostics)
+        {
+            LogToConsole(diagnostic.ToConsoleMessage());
+        }
+
+        _statusStripLabel.Text = result.Succeeded ? $"{operation} succeeded" : $"{operation} failed";
+        MessageBox.Show(this, result.Succeeded ? $"{operation} succeeded. See console for details." : $"{operation} failed. See console diagnostics.", operation, MessageBoxButtons.OK, result.Succeeded ? MessageBoxIcon.Information : MessageBoxIcon.Error);
     }
 
 
@@ -1890,6 +1984,9 @@ public sealed class MainForm : Form
         _duplicateButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _checkScriptsButton.Enabled = _currentProject is not null;
+        _hotReloadButton.Enabled = _currentProject is not null;
+        _debugScriptsButton.Enabled = _currentProject is not null;
         ShowInspector(e.Node?.Tag);
         PopulateTilePalette(_selectedEntity?.GetComponent<Tilemap>());
         UpdatePlayModeControls();
@@ -2190,6 +2287,9 @@ public sealed class MainForm : Form
         _loadSceneButton.Enabled = !_isPlayMode;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _checkScriptsButton.Enabled = _currentProject is not null;
+        _hotReloadButton.Enabled = _currentProject is not null;
+        _debugScriptsButton.Enabled = _currentProject is not null;
     }
 
     private void OnEngineErrorOccurred(object? sender, Exception ex)

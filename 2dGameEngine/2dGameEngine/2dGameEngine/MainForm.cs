@@ -1985,6 +1985,7 @@ public sealed class MainForm : Form
             LogExtensibilityCatalog(_extensibilityService.Refresh());
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
+            LoadProjectMainScene(_currentProject);
             LogToConsole($"Created {dialog.Template} project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
             _statusStripLabel.Text = $"Project created: {_currentProject.SafeName}";
         }
@@ -1995,6 +1996,32 @@ public sealed class MainForm : Form
         }
     }
 
+    private void LoadProjectMainScene(CreatedProject project)
+    {
+        string mainScenePath = Path.Combine(project.ScenesDirectory, "Main.scene.json");
+        Scene scene = File.Exists(mainScenePath)
+            ? SceneSerializer.Load(mainScenePath, _assets)
+            : new Scene("Main");
+
+        _engine.Stop();
+        _playModeSnapshot = null;
+        _isPlayMode = false;
+        _editScene = scene;
+        _engine.SetActiveScene(_editScene);
+        TryBindValidationSceneReferences(_editScene);
+        _selectedEntity = null;
+        _selectedEntities.Clear();
+        _isDraggingSelection = false;
+        _undoStack.Clear();
+        _redoStack.Clear();
+        PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
+        ShowInspector(_editScene);
+        _lastSavedSceneSnapshot = CaptureSceneSnapshot();
+        UpdatePlayModeControls();
+        _sceneEditorViewport.Invalidate();
+        _gameViewport.Invalidate();
+    }
 
 
     private void OnLoadProjectClicked(object? sender, EventArgs e)

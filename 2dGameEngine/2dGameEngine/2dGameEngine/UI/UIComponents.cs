@@ -52,7 +52,7 @@ public sealed class UITextComponent : Component
     public ContentAlignment Alignment { get; set; } = ContentAlignment.MiddleCenter;
 }
 
-public sealed class UIButtonComponent : Component
+public sealed class UIButtonComponent : Component, IUIEventHandler
 {
     public string Label { get; set; } = "Button";
     public Color NormalColor { get; set; } = Color.FromArgb(230, 56, 72, 104);
@@ -63,30 +63,51 @@ public sealed class UIButtonComponent : Component
     public bool IsPressed { get; private set; }
     public event EventHandler? Clicked;
     public void Click() => Clicked?.Invoke(this, EventArgs.Empty);
-    public override void Update(Time time, InputState input)
+    public void HandleUiEvent(UIEventContext context)
     {
         if (Entity?.GetComponent<RectTransformComponent>() is not { } rect) return;
         RectangleF bounds = UICanvasUtility.GetScreenRect(Entity, rect, UICanvasUtility.CurrentViewportSize);
-        IsHovered = bounds.Contains(input.MousePosition);
-        IsPressed = IsHovered && input.IsMouseButtonDown(MouseButtons.Left);
-        if ((IsHovered && input.WasMouseButtonReleased(MouseButtons.Left)) || input.WasKeyPressed(Keys.Enter) || input.WasKeyPressed(Keys.Space)) Click();
+        IsHovered = bounds.Contains(context.PointerPosition);
+        IsPressed = IsHovered && context.IsPrimaryDown;
+        if (IsHovered && context.WasPrimaryReleased)
+        {
+            context.Handled = true;
+            Click();
+        }
+    }
+
+    public override void Update(Time time, InputState input)
+    {
+        HandleUiEvent(new UIEventContext
+        {
+            PointerPosition = input.MousePosition,
+            IsPrimaryDown = input.IsMouseButtonDown(MouseButtons.Left),
+            WasPrimaryReleased = input.WasMouseButtonReleased(MouseButtons.Left),
+        });
+        if (input.WasKeyPressed(Keys.Enter) || input.WasKeyPressed(Keys.Space)) Click();
     }
 }
 
-public sealed class UISliderComponent : Component
+public sealed class UISliderComponent : Component, IUIEventHandler
 {
     private float _value = 0.5f;
     public float MinValue { get; set; }
     public float MaxValue { get; set; } = 1.0f;
     public float Value { get => _value; set => _value = Math.Clamp(value, MinValue, MaxValue); }
     public Color FillColor { get; set; } = Color.DeepSkyBlue;
-    public override void Update(Time time, InputState input)
+    public void HandleUiEvent(UIEventContext context)
     {
         if (Entity?.GetComponent<RectTransformComponent>() is not { } rect) return;
         RectangleF bounds = UICanvasUtility.GetScreenRect(Entity, rect, UICanvasUtility.CurrentViewportSize);
-        if (!input.IsMouseButtonDown(MouseButtons.Left) || !bounds.Contains(input.MousePosition)) return;
-        float t = Math.Clamp((input.MousePosition.X - bounds.Left) / Math.Max(1, bounds.Width), 0, 1);
+        if (!context.IsPrimaryDown || !bounds.Contains(context.PointerPosition)) return;
+        float t = Math.Clamp((context.PointerPosition.X - bounds.Left) / Math.Max(1, bounds.Width), 0, 1);
         Value = MinValue + (MaxValue - MinValue) * t;
+        context.Handled = true;
+    }
+
+    public override void Update(Time time, InputState input)
+    {
+        HandleUiEvent(new UIEventContext { PointerPosition = input.MousePosition, IsPrimaryDown = input.IsMouseButtonDown(MouseButtons.Left), WasPrimaryReleased = input.WasMouseButtonReleased(MouseButtons.Left) });
     }
 }
 

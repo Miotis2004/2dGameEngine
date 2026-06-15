@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using _2dGameEngine.Content;
 using _2dGameEngine.Core;
@@ -15,6 +14,9 @@ namespace _2dGameEngine.Graphics;
 /// </summary>
 public sealed class Renderer2D
 {
+    private readonly List<Entity> _renderEntities = [];
+    private readonly List<Light2D> _lights = [];
+
     /// <summary>
     /// Gets the camera used to project world-space positions.
     /// </summary>
@@ -29,6 +31,12 @@ public sealed class Renderer2D
     /// Gets the render pipeline settings used for lighting, culling, effects, and diagnostics.
     /// </summary>
     public RenderPipelineAsset Pipeline { get; } = new();
+
+    /// <summary>
+    /// Gets or sets the active backend. The Win2D value allows WinUI hosts to route these draw commands to Microsoft.Graphics.Canvas;
+    /// System.Drawing remains the Windows Forms editor fallback.
+    /// </summary>
+    public RenderBackendKind Backend { get; set; } = RenderBackendKind.SystemDrawingFallback;
 
     /// <summary>
     /// Renders every enabled sprite renderer in the provided scene.
@@ -50,30 +58,33 @@ public sealed class Renderer2D
             return;
         }
 
-        Entity[] renderEntities = Flatten(scene.Entities).Where(entity => entity.IsEnabled).ToArray();
+        _renderEntities.Clear();
+        Flatten(scene.Entities, _renderEntities);
 
-        IReadOnlyList<Light2D> lights = renderEntities
-            .Select(entity => entity.GetComponent<Light2D>())
-            .Where(light => light is { IsEnabled: true })
-            .Cast<Light2D>()
-            .ToArray();
+        _lights.Clear();
+        for (int i = 0; i < _renderEntities.Count; i++)
+        {
+            Light2D? light = _renderEntities[i].GetComponent<Light2D>();
+            if (light is { IsEnabled: true }) _lights.Add(light);
+        }
 
         int drawCalls = 0;
-        foreach (Entity entity in renderEntities
-            .Where(IsVisibleToCamera)
-            .OrderBy(GetSortingOrder))
+        _renderEntities.Sort((left, right) => GetSortingOrder(left).CompareTo(GetSortingOrder(right)));
+        for (int i = 0; i < _renderEntities.Count; i++)
         {
+            Entity entity = _renderEntities[i];
+            if (!entity.IsEnabled || !IsVisibleToCamera(entity)) continue;
             Tilemap? tilemap = entity.GetComponent<Tilemap>();
             if (tilemap is { IsEnabled: true })
             {
-                DrawTilemap(graphics, tilemap, viewportSize, lights);
+                DrawTilemap(graphics, tilemap, viewportSize, _lights);
                 drawCalls++;
             }
 
             SpriteRenderer? sprite = entity.GetComponent<SpriteRenderer>();
             if (sprite is { IsEnabled: true })
             {
-                DrawSprite(graphics, entity, sprite, viewportSize, lights);
+                DrawSprite(graphics, entity, sprite, viewportSize, _lights);
                 drawCalls++;
             }
 
@@ -85,19 +96,17 @@ public sealed class Renderer2D
             }
         }
 
-        drawCalls += DrawUi(graphics, renderEntities, viewportSize);
-        DrawDebugOverlay(graphics, lights.Count, drawCalls);
+        drawCalls += DrawUi(graphics, _renderEntities, viewportSize);
+        DrawDebugOverlay(graphics, _lights.Count, drawCalls);
     }
 
-    private static IEnumerable<Entity> Flatten(IEnumerable<Entity> roots)
+    private static void Flatten(IEnumerable<Entity> roots, List<Entity> results)
     {
         foreach (Entity entity in roots)
         {
-            yield return entity;
-            foreach (Entity child in Flatten(entity.Children))
-            {
-                yield return child;
-            }
+            if (!entity.IsEnabled) continue;
+            results.Add(entity);
+            Flatten(entity.Children, results);
         }
     }
 
@@ -140,7 +149,11 @@ public sealed class Renderer2D
         Tilemap? tilemap = entity.GetComponent<Tilemap>();
         ParticleSystem2D? particles = entity.GetComponent<ParticleSystem2D>();
 
-        int baseOrder = new int?[] { sprite?.SortingOrder, tilemap?.SortingOrder, particles?.SortingOrder }.Where(order => order.HasValue).Select(order => order!.Value).DefaultIfEmpty(0).Min();
+        int baseOrder = 0;
+        bool hasOrder = false;
+        if (sprite is not null) { baseOrder = sprite.SortingOrder; hasOrder = true; }
+        if (tilemap is not null && (!hasOrder || tilemap.SortingOrder < baseOrder)) { baseOrder = tilemap.SortingOrder; hasOrder = true; }
+        if (particles is not null && (!hasOrder || particles.SortingOrder < baseOrder)) { baseOrder = particles.SortingOrder; }
 
         return baseOrder + (entity.GetComponent<SortingGroup2D>()?.SortingOrderOffset ?? 0);
     }
@@ -257,8 +270,10 @@ public sealed class Renderer2D
     private static int DrawUi(System.Drawing.Graphics graphics, IReadOnlyList<Entity> entities, Size viewportSize)
     {
         int drawCalls = 0;
-        foreach (Entity entity in entities.Where(e => e.GetComponent<RectTransformComponent>() is not null).OrderBy(e => e.GetComponent<CanvasComponent>()?.SortingOrder ?? 1000))
+        for (int i = 0; i < entities.Count; i++)
         {
+            Entity entity = entities[i];
+            if (entity.GetComponent<RectTransformComponent>() is null) continue;
             RectTransformComponent rect = entity.GetComponent<RectTransformComponent>()!;
             RectangleF bounds = UICanvasUtility.GetScreenRect(entity, rect, viewportSize);
 

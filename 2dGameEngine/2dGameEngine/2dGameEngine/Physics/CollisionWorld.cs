@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using _2dGameEngine.Core;
 
 namespace _2dGameEngine.Physics;
@@ -15,11 +14,41 @@ public sealed class CollisionWorld
     /// </summary>
     /// <param name="scene">The scene to query.</param>
     /// <returns>The enabled colliders.</returns>
+    public static void GetColliders(Scene scene, List<Collider2D> results)
+    {
+        results.Clear();
+        for (int i = 0; i < scene.Entities.Count; i++)
+        {
+            Entity entity = scene.Entities[i];
+            if (!entity.IsEnabled) continue;
+            for (int c = 0; c < entity.Components.Count; c++)
+            {
+                if (entity.Components[c] is Collider2D { IsEnabled: true } collider)
+                {
+                    results.Add(collider);
+                }
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Enumerates every enabled collider in the scene. Prefer the overload that fills a caller-owned list in hot paths.
+    /// </summary>
     public static IEnumerable<Collider2D> GetColliders(Scene scene)
     {
-        return scene.Entities.Where(entity => entity.IsEnabled)
-            .SelectMany(entity => entity.Components.OfType<Collider2D>())
-            .Where(collider => collider.IsEnabled);
+        for (int i = 0; i < scene.Entities.Count; i++)
+        {
+            Entity entity = scene.Entities[i];
+            if (!entity.IsEnabled) continue;
+            for (int c = 0; c < entity.Components.Count; c++)
+            {
+                if (entity.Components[c] is Collider2D { IsEnabled: true } collider)
+                {
+                    yield return collider;
+                }
+            }
+        }
     }
 
     /// <summary>

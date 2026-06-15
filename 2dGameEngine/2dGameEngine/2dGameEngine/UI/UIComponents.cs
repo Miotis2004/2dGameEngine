@@ -13,6 +13,7 @@ public enum CanvasRenderMode { ScreenSpaceOverlay, WorldSpace }
 public enum UIAnchorPreset { TopLeft, Top, TopRight, Left, Center, Right, BottomLeft, Bottom, BottomRight, Stretch }
 public enum UILayoutDirection { Horizontal, Vertical }
 
+[Obsolete("Use Canvas for routed UI roots. CanvasComponent remains for legacy scene compatibility.")]
 public sealed class CanvasComponent : Component
 {
     public CanvasRenderMode RenderMode { get; set; } = CanvasRenderMode.ScreenSpaceOverlay;

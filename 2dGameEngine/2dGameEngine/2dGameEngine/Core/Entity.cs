@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using _2dGameEngine.Input;
 
 namespace _2dGameEngine.Core;
@@ -11,7 +10,11 @@ namespace _2dGameEngine.Core;
 public sealed class Entity
 {
     private readonly List<Component> _components = [];
+    private readonly List<Component> _componentsToAdd = [];
     private readonly List<Entity> _children = [];
+    private readonly List<Entity> _childrenToAdd = [];
+    private readonly List<Entity> _childrenToRemove = [];
+    private bool _isUpdating;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Entity"/> class.
@@ -66,9 +69,18 @@ public sealed class Entity
             throw new InvalidOperationException("An entity cannot be parented to itself or one of its descendants.");
         }
 
-        child.Parent?._children.Remove(child);
+        child.Parent?.RemoveChild(child);
         child.Parent = this;
-        _children.Add(child);
+        _childrenToRemove.Remove(child);
+        if (_children.Contains(child) || _childrenToAdd.Contains(child)) return child;
+        if (_isUpdating)
+        {
+            _childrenToAdd.Add(child);
+        }
+        else
+        {
+            _children.Add(child);
+        }
         return child;
     }
 
@@ -78,11 +90,14 @@ public sealed class Entity
     public bool RemoveChild(Entity child)
     {
         ArgumentNullException.ThrowIfNull(child);
-        if (!_children.Remove(child))
+        bool existed = _children.Remove(child);
+        bool pending = _childrenToAdd.Remove(child);
+        if (!existed && !pending)
         {
             return false;
         }
 
+        _childrenToRemove.Add(child);
         child.Parent = null;
         return true;
     }
@@ -116,7 +131,14 @@ public sealed class Entity
             throw new InvalidOperationException("A component cannot be attached to more than one entity.");
         }
 
-        _components.Add(component);
+        if (_isUpdating)
+        {
+            _componentsToAdd.Add(component);
+        }
+        else
+        {
+            _components.Add(component);
+        }
         component.Attach(this);
         return component;
     }
@@ -129,7 +151,17 @@ public sealed class Entity
     public TComponent? GetComponent<TComponent>()
         where TComponent : Component
     {
-        return _components.OfType<TComponent>().FirstOrDefault();
+        foreach (Component component in _components)
+        {
+            if (component is TComponent match) return match;
+        }
+
+        foreach (Component component in _componentsToAdd)
+        {
+            if (component is TComponent match) return match;
+        }
+
+        return null;
     }
 
     internal void Update(Time time, InputState input)
@@ -139,17 +171,49 @@ public sealed class Entity
             return;
         }
 
-        foreach (Component component in _components.ToArray())
+        ApplyStructuralChanges();
+        _isUpdating = true;
+        int componentCount = _components.Count;
+        for (int i = 0; i < componentCount; i++)
         {
+            Component component = _components[i];
             if (component.IsEnabled)
             {
                 component.Update(time, input);
             }
         }
 
-        foreach (Entity child in _children.ToArray())
+        int childCount = _children.Count;
+        for (int i = 0; i < childCount; i++)
         {
-            child.Update(time, input);
+            _children[i].Update(time, input);
+        }
+
+        _isUpdating = false;
+        ApplyStructuralChanges();
+    }
+
+    internal void ApplyStructuralChanges()
+    {
+        if (_componentsToAdd.Count > 0)
+        {
+            _components.AddRange(_componentsToAdd);
+            _componentsToAdd.Clear();
+        }
+
+        if (_childrenToRemove.Count > 0)
+        {
+            foreach (Entity child in _childrenToRemove)
+            {
+                _children.Remove(child);
+            }
+            _childrenToRemove.Clear();
+        }
+
+        if (_childrenToAdd.Count > 0)
+        {
+            _children.AddRange(_childrenToAdd);
+            _childrenToAdd.Clear();
         }
     }
 }

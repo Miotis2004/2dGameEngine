@@ -41,5 +41,6 @@ public enum RenderLayerMask
     Gameplay = 1 << 2,
     Foreground = 1 << 3,
     Ui = 1 << 4,
-    Everything = Default | Background | Gameplay | Foreground | Ui,
+    Effects = 1 << 5,
+    Everything = Default | Background | Gameplay | Foreground | Ui | Effects,
 }

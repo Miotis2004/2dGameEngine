@@ -29,6 +29,7 @@ public static class ComponentAuthoring
         new("Point Light 2D", "Rendering", () => new Light2D { LightType = Light2DType.Point, Color = System.Drawing.Color.White, Intensity = 1.2f, Radius = 260.0f }),
         new("Global Light 2D", "Rendering", () => new Light2D { LightType = Light2DType.Global, Color = System.Drawing.Color.White, Intensity = 0.35f }),
         new("Sorting Group 2D", "Rendering", () => new SortingGroup2D()),
+        new("Particle System 2D", "Effects", () => new ParticleSystem2D()),
         new("Box Collider 2D", "Physics", () => new BoxCollider2D(new Vector2(64.0f, 64.0f))),
         new("Circle Collider 2D", "Physics", () => new CircleCollider2D(32.0f)),
         new("Capsule Collider 2D", "Physics", () => new CapsuleCollider2D(new Vector2(48.0f, 96.0f))),

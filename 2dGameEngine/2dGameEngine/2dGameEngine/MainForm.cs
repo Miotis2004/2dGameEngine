@@ -48,11 +48,13 @@ public sealed class MainForm : Form
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
     private readonly ListView _audioMixerList;
+    private readonly ListView _effectsList;
     private readonly TrackBar _audioVolumeSlider;
     private readonly Label _audioMixerStatusLabel;
     private AudioMixerGroup? _selectedMixerGroup;
     private readonly ToolStripButton _addSpriteButton;
     private readonly ToolStripButton _addTilemapButton;
+    private readonly ToolStripButton _addParticlesButton;
     private readonly ToolStripButton _tilePaintButton;
     private readonly ToolStripButton _duplicateButton;
     private readonly ToolStripButton _deleteButton;
@@ -174,6 +176,10 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _addParticlesButton = new ToolStripButton("Add Particles")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _tilePaintButton = new ToolStripButton("Tile Paint")
         {
             CheckOnClick = true,
@@ -240,6 +246,7 @@ public sealed class MainForm : Form
         };
         _addSpriteButton.Click += OnAddSpriteClicked;
         _addTilemapButton.Click += OnAddTilemapClicked;
+        _addParticlesButton.Click += OnAddParticlesClicked;
         _tilePaintButton.Click += OnTilePaintClicked;
         _duplicateButton.Click += OnDuplicateClicked;
         _deleteButton.Click += OnDeleteClicked;
@@ -268,6 +275,7 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_addSpriteButton);
         toolStrip.Items.Add(_addTilemapButton);
+        toolStrip.Items.Add(_addParticlesButton);
         toolStrip.Items.Add(_tilePaintButton);
         toolStrip.Items.Add(_duplicateButton);
         toolStrip.Items.Add(_deleteButton);
@@ -385,6 +393,20 @@ public sealed class MainForm : Form
         PopulateTilePalette(null);
         PopulateProjectAssetsPane(null);
 
+        _effectsList = new ListView
+        {
+            Dock = DockStyle.Fill,
+            FullRowSelect = true,
+            GridLines = true,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            View = View.Details,
+        };
+        _effectsList.Columns.Add("Emitter", 140);
+        _effectsList.Columns.Add("Live", 55);
+        _effectsList.Columns.Add("Rate", 55);
+        _effectsList.Columns.Add("Lifetime", 70);
+        _effectsList.SelectedIndexChanged += OnEffectsSelectionChanged;
+
         _consoleList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -488,7 +510,15 @@ public sealed class MainForm : Form
         };
         statusTileSplit.Panel1.Controls.Add(CreateDockPanel("Runtime Status", _runtimeStatusLabel));
         paletteAudioSplit.Panel1.Controls.Add(CreateDockPanel("Tile Palette", _tilePaletteList));
-        paletteAudioSplit.Panel2.Controls.Add(CreateDockPanel("Audio Mixer", CreateAudioMixerPanel()));
+        SplitContainer effectsAudioSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 100,
+        };
+        effectsAudioSplit.Panel1.Controls.Add(CreateDockPanel("VFX Editor", _effectsList));
+        effectsAudioSplit.Panel2.Controls.Add(CreateDockPanel("Audio Mixer", CreateAudioMixerPanel()));
+        paletteAudioSplit.Panel2.Controls.Add(effectsAudioSplit);
         statusTileSplit.Panel2.Controls.Add(paletteAudioSplit);
         bottomSplit.Panel2.Controls.Add(statusTileSplit);
         editorGameSplit.Panel1.Controls.Add(CreateDockPanel("Scene Editor", _sceneEditorViewport));
@@ -503,6 +533,7 @@ public sealed class MainForm : Form
         Controls.Add(toolStrip);
 
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         _lastSavedSceneSnapshot = CaptureSceneSnapshot();
         UpdatePlayModeControls();
         KeyDown += OnFormKeyDown;
@@ -522,6 +553,7 @@ public sealed class MainForm : Form
         _stepButton.Click -= OnStepClicked;
         _addSpriteButton.Click -= OnAddSpriteClicked;
         _addTilemapButton.Click -= OnAddTilemapClicked;
+        _addParticlesButton.Click -= OnAddParticlesClicked;
         _tilePaintButton.Click -= OnTilePaintClicked;
         _tilePaletteList.SelectedIndexChanged -= OnTilePaletteSelectionChanged;
         _duplicateButton.Click -= OnDuplicateClicked;
@@ -917,6 +949,7 @@ public sealed class MainForm : Form
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Tilemap", (_, _) => AddTilemap(_lastSceneContextPoint)));
+        menu.Items.Add(CreateMenuItem("Add Particle System", (_, _) => AddParticleEmitter(_lastSceneContextPoint)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateMenuItem("Duplicate Selected", OnDuplicateClicked));
         menu.Items.Add(CreateMenuItem("Delete Selected", OnDeleteClicked));
@@ -939,6 +972,7 @@ public sealed class MainForm : Form
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Tilemap", (_, _) => AddTilemap(Point.Empty)));
+        menu.Items.Add(CreateMenuItem("Add Particle System", (_, _) => AddParticleEmitter(Point.Empty)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateMenuItem("Duplicate", OnDuplicateClicked));
         menu.Items.Add(CreateMenuItem("Delete", OnDeleteClicked));
@@ -1009,6 +1043,10 @@ public sealed class MainForm : Form
         Entity goalLight = scene.CreateEntity("Goal Point Light 2D");
         goalLight.Transform.Value.Position = goalEntity.Transform.Value.Position;
         goalLight.AddComponent(new Light2D { LightType = Light2DType.Point, Color = Color.Gold, Intensity = 1.1f, Radius = 320.0f, LayerMask = RenderLayerMask.Gameplay | RenderLayerMask.Background });
+
+        Entity sparkles = scene.CreateEntity("Goal Sparkle Particles");
+        sparkles.Transform.Value.Position = goalEntity.Transform.Value.Position + new Vector2(0.0f, -58.0f);
+        sparkles.AddComponent(new ParticleSystem2D { EmissionRate = 22.0f, MaxParticles = 96, Lifetime = 1.1f, StartSpeed = 90.0f, SpreadAngle = 140.0f, Gravity = new Vector2(0.0f, 35.0f), StartColor = Color.FromArgb(230, Color.Gold), EndColor = Color.FromArgb(0, Color.OrangeRed), SortingOrder = 30 });
 
         Entity hud = scene.CreateEntity("HUD Canvas");
         hud.AddComponent(new CanvasComponent { SortingOrder = 2000, ReferenceResolution = new SizeF(1280, 720) });
@@ -1237,6 +1275,7 @@ public sealed class MainForm : Form
             _selectedEntities.Clear();
             Entity? restoredSelection = string.IsNullOrWhiteSpace(selectedName) ? null : _editScene.Entities.FirstOrDefault(entity => entity.Name == selectedName);
             PopulateHierarchy(_editScene);
+            PopulateEffectsEditor();
             SelectEntity(restoredSelection);
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
@@ -1336,6 +1375,7 @@ public sealed class MainForm : Form
 
         LogToConsole($"Added {primitiveType.ToString().ToLowerInvariant()} sprite entity '{entity.Name}'.");
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         UpdatePlayModeControls();
         SelectEntity(entity);
         PushSceneCommand($"Add {primitiveType} sprite", before);
@@ -1348,6 +1388,68 @@ public sealed class MainForm : Form
         _ => Color.MediumPurple,
     };
 
+
+    private void OnAddParticlesClicked(object? sender, EventArgs e)
+    {
+        AddParticleEmitter(Point.Empty);
+    }
+
+    private void AddParticleEmitter(Point viewportPoint)
+    {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        string before = CaptureSceneSnapshot();
+        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Particle Emitter"));
+        entity.Transform.Value.Position = viewportPoint == Point.Empty ? _renderer.Camera.Position + new Vector2(120.0f, -40.0f) : ScreenToWorld(viewportPoint, _sceneEditorViewport.ClientSize);
+        entity.AddComponent(new ParticleSystem2D());
+        PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
+        SelectEntity(entity);
+        LogToConsole($"Added particle emitter '{entity.Name}'.");
+        PushSceneCommand("Add particle emitter", before);
+    }
+
+    private void PopulateEffectsEditor()
+    {
+        _effectsList.Items.Clear();
+        foreach (Entity entity in _editScene.Entities)
+        {
+            ParticleSystem2D? particles = entity.GetComponent<ParticleSystem2D>();
+            if (particles is null)
+            {
+                continue;
+            }
+
+            _effectsList.Items.Add(new ListViewItem(new[]
+            {
+                entity.Name,
+                particles.Particles.Count.ToString(),
+                particles.EmissionRate.ToString("0.#"),
+                particles.Lifetime.ToString("0.##s"),
+            })
+            {
+                Tag = entity,
+            });
+        }
+    }
+
+    private void OnEffectsSelectionChanged(object? sender, EventArgs e)
+    {
+        if (_effectsList.SelectedItems.Count > 0 && _effectsList.SelectedItems[0].Tag is Entity entity)
+        {
+            SelectEntity(entity);
+            ShowInspector(entity.GetComponent<ParticleSystem2D>());
+        }
+    }
 
     private void OnAddTilemapClicked(object? sender, EventArgs e)
     {
@@ -1391,6 +1493,7 @@ public sealed class MainForm : Form
         entity.AddComponent(new TilemapCollider2D());
         PopulateTilePalette(tilemap);
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         SelectEntity(entity);
         _tilePaintButton.Checked = true;
         _isTilePaintMode = true;
@@ -1441,6 +1544,7 @@ public sealed class MainForm : Form
         }
 
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         UpdatePlayModeControls();
         SelectEntity(null);
         foreach (Entity duplicate in duplicates)
@@ -1476,6 +1580,7 @@ public sealed class MainForm : Form
         _selectedEntities.Clear();
         _isDraggingSelection = false;
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         UpdatePlayModeControls();
         ShowInspector(scene);
         _sceneEditorViewport.Invalidate();
@@ -1541,6 +1646,7 @@ public sealed class MainForm : Form
             TryBindValidationSceneReferences(_editScene);
             SelectEntity(null);
             PopulateHierarchy(_editScene);
+            PopulateEffectsEditor();
             ShowInspector(_editScene);
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
@@ -1618,6 +1724,7 @@ public sealed class MainForm : Form
             Tilemap tilemap => CloneTilemap(tilemap),
             Light2D light => new Light2D { LightType = light.LightType, Color = light.Color, Intensity = light.Intensity, Radius = light.Radius, SpotAngle = light.SpotAngle, LayerMask = light.LayerMask },
             SortingGroup2D group => new SortingGroup2D { SortingOrderOffset = group.SortingOrderOffset, Layer = group.Layer },
+            ParticleSystem2D particles => new ParticleSystem2D { EmissionRate = particles.EmissionRate, MaxParticles = particles.MaxParticles, Lifetime = particles.Lifetime, SpreadAngle = particles.SpreadAngle, StartSpeed = particles.StartSpeed, StartSize = particles.StartSize, EndSize = particles.EndSize, Gravity = particles.Gravity, StartColor = particles.StartColor, EndColor = particles.EndColor, SortingOrder = particles.SortingOrder, RenderLayer = particles.RenderLayer, Looping = particles.Looping, IsEmitting = particles.IsEmitting },
             CanvasComponent canvas => new CanvasComponent { RenderMode = canvas.RenderMode, ReferenceResolution = canvas.ReferenceResolution, ScaleFactor = canvas.ScaleFactor, SortingOrder = canvas.SortingOrder },
             RectTransformComponent rect => new RectTransformComponent { AnchoredPosition = rect.AnchoredPosition, Size = rect.Size, Anchor = rect.Anchor, Pivot = rect.Pivot },
             UIPanelComponent panel => new UIPanelComponent { BackgroundColor = panel.BackgroundColor, BorderColor = panel.BorderColor, BorderThickness = panel.BorderThickness },
@@ -2104,6 +2211,18 @@ public sealed class MainForm : Form
                 AddInspectorRow("Definitions", tilemap.Definitions.Count.ToString());
                 AddInspectorRow("Sorting Order", tilemap.SortingOrder.ToString());
                 break;
+            case ParticleSystem2D particles:
+                _inspectorHeader.Text = "Particle System 2D";
+                AddInspectorRow("Type", "Particle System 2D");
+                AddInspectorRow("Live Particles", particles.Particles.Count.ToString());
+                AddInspectorRow("Emission Rate", particles.EmissionRate.ToString("0.#/s"));
+                AddInspectorRow("Max Particles", particles.MaxParticles.ToString());
+                AddInspectorRow("Lifetime", particles.Lifetime.ToString("0.##s"));
+                AddInspectorRow("Speed", particles.StartSpeed.ToString("0.#"));
+                AddInspectorRow("Size", $"{particles.StartSize:0.#} -> {particles.EndSize:0.#}");
+                AddInspectorRow("Spread", particles.SpreadAngle.ToString("0.#°"));
+                AddInspectorRow("Sorting Order", particles.SortingOrder.ToString());
+                break;
             case RigidBody2D body:
                 _inspectorHeader.Text = "RigidBody 2D";
                 AddInspectorRow("Velocity", FormattableString.Invariant($"{body.Velocity.X:0.##}, {body.Velocity.Y:0.##}"));
@@ -2151,6 +2270,7 @@ public sealed class MainForm : Form
             string genericState = _engine.IsRunning ? "Playing" : "Paused";
             _runtimeStatusLabel.Text = FormattableString.Invariant($"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {args.Scene?.Name ?? "<none>"}\nEntities: {args.Scene?.Entities.Count ?? 0}\nRuntime: {genericState}");
             _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {genericState.ToLowerInvariant()}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
+            PopulateEffectsEditor();
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
             return;
@@ -2173,6 +2293,7 @@ public sealed class MainForm : Form
         _runtimeStatusLabel.Text = FormattableString.Invariant(
             $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_playerEntity.Name}\nObjective: {(_levelComplete ? "Complete" : "Reach the gold flag")}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_playerBody.Velocity.X:0.00}, {_playerBody.Velocity.Y:0.00})\nGrounded: {_playerBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
         _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
+        PopulateEffectsEditor();
         _sceneEditorViewport.Invalidate();
         _gameViewport.Invalidate();
     }
@@ -2297,6 +2418,7 @@ public sealed class MainForm : Form
         _engine.SetActiveScene(_editScene);
         TryBindValidationSceneReferences(_editScene);
         PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
         SelectEntity(string.IsNullOrWhiteSpace(selectedName) ? null : _editScene.Entities.FirstOrDefault(entity => entity.Name == selectedName));
     }
 
@@ -2460,6 +2582,7 @@ public sealed class MainForm : Form
             }
 
             ShowInspector(_selectedEntity);
+            PopulateEffectsEditor();
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
         }

@@ -31,6 +31,26 @@ public sealed class CollisionWorld
         }
     }
 
+
+    /// <summary>
+    /// Enumerates every enabled collider in the scene. Prefer the overload that fills a caller-owned list in hot paths.
+    /// </summary>
+    public static IEnumerable<Collider2D> GetColliders(Scene scene)
+    {
+        for (int i = 0; i < scene.Entities.Count; i++)
+        {
+            Entity entity = scene.Entities[i];
+            if (!entity.IsEnabled) continue;
+            for (int c = 0; c < entity.Components.Count; c++)
+            {
+                if (entity.Components[c] is Collider2D { IsEnabled: true } collider)
+                {
+                    yield return collider;
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Gets a value indicating whether two axis-aligned bounds overlap.
     /// </summary>

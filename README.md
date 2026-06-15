@@ -740,6 +740,10 @@ Deliverable:
 
 A reliable editor interaction layer where destructive or complex scene edits can be confidently undone, redone, duplicated, and saved.
 
+Status:
+
+Completed. Phase 19 adds a snapshot-backed editor command history with toolbar and keyboard undo/redo, multi-entity selection, group dragging, duplicate/delete shortcuts, tile paint history, save dirty-state tracking, and matured scene gizmo overlays for selection bounds, pivots, axis handles, snapping, and global-space feedback.
+
 ---
 
 # Phase 20: Audio System and Mixer Editor

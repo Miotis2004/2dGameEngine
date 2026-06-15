@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
+using _2dGameEngine.Audio;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Physics;
@@ -29,6 +30,7 @@ public static class ComponentAuthoring
         new("Entity Motion", "Core", () => new EntityMotionComponent(Vector2.Zero)),
         new("Input Movement", "Core", () => new EntityInputMovementComponent(180.0f)),
         new("Platformer Movement", "Physics", () => new PlatformerMovementComponent(285.0f, 610.0f)),
+        new("Audio Source", "Audio", () => new AudioSourceComponent()),
         new("Tilemap Collider 2D", "Physics", () => new TilemapCollider2D()),
     ];
 

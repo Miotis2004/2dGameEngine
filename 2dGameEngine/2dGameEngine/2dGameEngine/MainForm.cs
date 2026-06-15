@@ -14,6 +14,7 @@ using _2dGameEngine.Input;
 using _2dGameEngine.Physics;
 using _2dGameEngine.Serialization;
 using _2dGameEngine.Scripting;
+using _2dGameEngine.UI;
 
 namespace _2dGameEngine;
 
@@ -328,7 +329,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Phase 19 scene tools - Ctrl/Shift click multi-selects, drag moves groups, Ctrl+Z/Y undo/redo, Ctrl+D duplicates",
+            Text = "Phase 22 UI Canvas tools - add Canvas/Panel/Text/Button/Slider, edit rects with scene handles, Ctrl+Z/Y undo/redo",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -975,6 +976,23 @@ public sealed class MainForm : Form
         goalLight.Transform.Value.Position = goalEntity.Transform.Value.Position;
         goalLight.AddComponent(new Light2D { LightType = Light2DType.Point, Color = Color.Gold, Intensity = 1.1f, Radius = 320.0f, LayerMask = RenderLayerMask.Gameplay | RenderLayerMask.Background });
 
+        Entity hud = scene.CreateEntity("HUD Canvas");
+        hud.AddComponent(new CanvasComponent { SortingOrder = 2000, ReferenceResolution = new SizeF(1280, 720) });
+        hud.AddComponent(new RectTransformComponent { Anchor = UIAnchorPreset.TopLeft, Pivot = Vector2.Zero, Size = new Vector2(1280, 720) });
+
+        Entity hudPanel = hud.AddChild(new Entity("HUD Objective Panel"));
+        hudPanel.AddComponent(new RectTransformComponent { Anchor = UIAnchorPreset.TopLeft, Pivot = Vector2.Zero, AnchoredPosition = new Vector2(16, 56), Size = new Vector2(330, 72) });
+        hudPanel.AddComponent(new UIPanelComponent());
+        hudPanel.AddComponent(new UITextComponent { Text = "Reach the golden goal flag", Alignment = ContentAlignment.MiddleCenter, FontSize = 14.0f });
+
+        Entity actionButton = hud.AddChild(new Entity("HUD Action Button"));
+        actionButton.AddComponent(new RectTransformComponent { Anchor = UIAnchorPreset.BottomRight, Pivot = Vector2.One, AnchoredPosition = new Vector2(-24, -24), Size = new Vector2(180, 44) });
+        actionButton.AddComponent(new UIButtonComponent { Label = "Restart", ActionName = "RestartLevel" });
+
+        Entity health = hud.AddChild(new Entity("HUD Health Slider"));
+        health.AddComponent(new RectTransformComponent { Anchor = UIAnchorPreset.TopLeft, Pivot = Vector2.Zero, AnchoredPosition = new Vector2(16, 136), Size = new Vector2(260, 18) });
+        health.AddComponent(new UISliderComponent { Value = 0.75f, FillColor = Color.LimeGreen });
+
         return scene;
     }
 
@@ -1559,6 +1577,14 @@ public sealed class MainForm : Form
             Tilemap tilemap => CloneTilemap(tilemap),
             Light2D light => new Light2D { LightType = light.LightType, Color = light.Color, Intensity = light.Intensity, Radius = light.Radius, SpotAngle = light.SpotAngle, LayerMask = light.LayerMask },
             SortingGroup2D group => new SortingGroup2D { SortingOrderOffset = group.SortingOrderOffset, Layer = group.Layer },
+            CanvasComponent canvas => new CanvasComponent { RenderMode = canvas.RenderMode, ReferenceResolution = canvas.ReferenceResolution, ScaleFactor = canvas.ScaleFactor, SortingOrder = canvas.SortingOrder },
+            RectTransformComponent rect => new RectTransformComponent { AnchoredPosition = rect.AnchoredPosition, Size = rect.Size, Anchor = rect.Anchor, Pivot = rect.Pivot },
+            UIPanelComponent panel => new UIPanelComponent { BackgroundColor = panel.BackgroundColor, BorderColor = panel.BorderColor, BorderThickness = panel.BorderThickness },
+            UIImageComponent image => new UIImageComponent { Frame = image.Frame, Tint = image.Tint, SourcePath = image.SourcePath },
+            UITextComponent text => new UITextComponent { Text = text.Text, FontFamily = text.FontFamily, FontSize = text.FontSize, Color = text.Color, Alignment = text.Alignment },
+            UIButtonComponent button => new UIButtonComponent { Label = button.Label, NormalColor = button.NormalColor, HighlightedColor = button.HighlightedColor, PressedColor = button.PressedColor, ActionName = button.ActionName },
+            UISliderComponent slider => new UISliderComponent { MinValue = slider.MinValue, MaxValue = slider.MaxValue, Value = slider.Value, FillColor = slider.FillColor },
+            UILayoutGroupComponent layout => new UILayoutGroupComponent { Direction = layout.Direction, Spacing = layout.Spacing, Padding = layout.Padding },
             AuthoredScriptComponent script => new AuthoredScriptComponent(script.ClassName, script.ScriptPath) { Description = script.Description },
             _ => null,
         };
@@ -1873,6 +1899,35 @@ public sealed class MainForm : Form
                 AddInspectorRow("Entity", script.Entity?.Name ?? "<detached>");
                 AddInspectorRow("Source", script.ScriptPath);
                 AddInspectorRow("Properties", script.Properties.Count.ToString());
+                break;
+            case CanvasComponent canvas:
+                _inspectorHeader.Text = "Canvas";
+                AddInspectorRow("Type", "UI Canvas");
+                AddInspectorRow("Render Mode", canvas.RenderMode.ToString());
+                AddInspectorRow("Reference Resolution", $"{canvas.ReferenceResolution.Width} x {canvas.ReferenceResolution.Height}");
+                AddInspectorRow("Sorting Order", canvas.SortingOrder.ToString());
+                break;
+            case RectTransformComponent rect:
+                _inspectorHeader.Text = "Rect Transform";
+                AddInspectorRow("Anchor", rect.Anchor.ToString());
+                AddInspectorRow("Position", FormattableString.Invariant($"{rect.AnchoredPosition.X:0.##}, {rect.AnchoredPosition.Y:0.##}"));
+                AddInspectorRow("Size", FormattableString.Invariant($"{rect.Size.X:0.##}, {rect.Size.Y:0.##}"));
+                AddInspectorRow("Pivot", FormattableString.Invariant($"{rect.Pivot.X:0.##}, {rect.Pivot.Y:0.##}"));
+                break;
+            case UITextComponent text:
+                _inspectorHeader.Text = "UI Text";
+                AddInspectorRow("Text", text.Text);
+                AddInspectorRow("Font", $"{text.FontFamily} {text.FontSize:0.#}");
+                break;
+            case UIButtonComponent button:
+                _inspectorHeader.Text = "UI Button";
+                AddInspectorRow("Label", button.Label);
+                AddInspectorRow("Action", button.ActionName ?? "<none>");
+                break;
+            case UISliderComponent slider:
+                _inspectorHeader.Text = "UI Slider";
+                AddInspectorRow("Value", slider.Value.ToString("0.##"));
+                AddInspectorRow("Range", $"{slider.MinValue:0.##} - {slider.MaxValue:0.##}");
                 break;
             case Tilemap tilemap:
                 _inspectorHeader.Text = "Tilemap";

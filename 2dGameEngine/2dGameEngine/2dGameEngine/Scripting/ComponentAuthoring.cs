@@ -9,6 +9,7 @@ using _2dGameEngine.Audio;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Physics;
+using _2dGameEngine.UI;
 
 namespace _2dGameEngine.Scripting;
 
@@ -35,6 +36,14 @@ public static class ComponentAuthoring
         new("Platformer Movement", "Physics", () => new PlatformerMovementComponent(285.0f, 610.0f)),
         new("Audio Source", "Audio", () => new AudioSourceComponent()),
         new("Tilemap Collider 2D", "Physics", () => new TilemapCollider2D()),
+        new("Canvas", "UI", () => new CanvasComponent()),
+        new("Rect Transform", "UI", () => new RectTransformComponent()),
+        new("Panel", "UI", () => new UIPanelComponent()),
+        new("Image", "UI", () => new UIImageComponent()),
+        new("Text", "UI", () => new UITextComponent()),
+        new("Button", "UI", () => new UIButtonComponent()),
+        new("Slider", "UI", () => new UISliderComponent()),
+        new("Layout Group", "UI", () => new UILayoutGroupComponent()),
     ];
 
     /// <summary>

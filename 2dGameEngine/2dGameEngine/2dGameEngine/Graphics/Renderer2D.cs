@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using _2dGameEngine.Content;
 using _2dGameEngine.Core;
+using _2dGameEngine.UI;
 
 namespace _2dGameEngine.Graphics;
 
@@ -40,6 +41,7 @@ public sealed class Renderer2D
         ArgumentNullException.ThrowIfNull(graphics);
 
         graphics.Clear(ClearColor);
+        UICanvasUtility.SetCurrentViewportSize(viewportSize);
         graphics.SmoothingMode = Pipeline.PixelPerfect ? SmoothingMode.None : SmoothingMode.AntiAlias;
         graphics.InterpolationMode = Pipeline.PixelPerfect ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
 
@@ -48,14 +50,16 @@ public sealed class Renderer2D
             return;
         }
 
-        IReadOnlyList<Light2D> lights = scene.Entities.Where(entity => entity.IsEnabled)
+        Entity[] renderEntities = Flatten(scene.Entities).Where(entity => entity.IsEnabled).ToArray();
+
+        IReadOnlyList<Light2D> lights = renderEntities
             .Select(entity => entity.GetComponent<Light2D>())
             .Where(light => light is { IsEnabled: true })
             .Cast<Light2D>()
             .ToArray();
 
         int drawCalls = 0;
-        foreach (Entity entity in scene.Entities.Where(entity => entity.IsEnabled)
+        foreach (Entity entity in renderEntities
             .Where(IsVisibleToCamera)
             .OrderBy(GetSortingOrder))
         {
@@ -74,7 +78,20 @@ public sealed class Renderer2D
             }
         }
 
+        drawCalls += DrawUi(graphics, renderEntities, viewportSize);
         DrawDebugOverlay(graphics, lights.Count, drawCalls);
+    }
+
+    private static IEnumerable<Entity> Flatten(IEnumerable<Entity> roots)
+    {
+        foreach (Entity entity in roots)
+        {
+            yield return entity;
+            foreach (Entity child in Flatten(entity.Children))
+            {
+                yield return child;
+            }
+        }
     }
 
     private void DrawDebugOverlay(System.Drawing.Graphics graphics, int lightCount, int drawCalls)
@@ -233,6 +250,66 @@ public sealed class Renderer2D
         new PointF(bounds.Right, bounds.Bottom),
         new PointF(bounds.X, bounds.Bottom),
     ];
+
+    private static int DrawUi(System.Drawing.Graphics graphics, IReadOnlyList<Entity> entities, Size viewportSize)
+    {
+        int drawCalls = 0;
+        foreach (Entity entity in entities.Where(e => e.GetComponent<RectTransformComponent>() is not null).OrderBy(e => e.GetComponent<CanvasComponent>()?.SortingOrder ?? 1000))
+        {
+            RectTransformComponent rect = entity.GetComponent<RectTransformComponent>()!;
+            RectangleF bounds = UICanvasUtility.GetScreenRect(entity, rect, viewportSize);
+
+            if (entity.GetComponent<UIPanelComponent>() is { IsEnabled: true } panel)
+            {
+                using SolidBrush brush = new(panel.BackgroundColor);
+                using Pen pen = new(panel.BorderColor, Math.Max(1.0f, panel.BorderThickness));
+                graphics.FillRectangle(brush, bounds);
+                graphics.DrawRectangle(pen, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                drawCalls++;
+            }
+
+            if (entity.GetComponent<UIImageComponent>() is { IsEnabled: true } image)
+            {
+                DrawFrameOrColor(graphics, image.Frame, image.Tint, bounds);
+                drawCalls++;
+            }
+
+            if (entity.GetComponent<UIButtonComponent>() is { IsEnabled: true } button)
+            {
+                Color color = button.IsPressed ? button.PressedColor : button.IsHovered ? button.HighlightedColor : button.NormalColor;
+                using SolidBrush brush = new(color);
+                graphics.FillRectangle(brush, bounds);
+                DrawCenteredText(graphics, button.Label, SystemFonts.DefaultFont, Color.White, bounds);
+                drawCalls++;
+            }
+
+            if (entity.GetComponent<UISliderComponent>() is { IsEnabled: true } slider)
+            {
+                using SolidBrush track = new(Color.FromArgb(220, 40, 44, 52));
+                using SolidBrush fill = new(slider.FillColor);
+                graphics.FillRectangle(track, bounds);
+                float t = (slider.Value - slider.MinValue) / Math.Max(0.0001f, slider.MaxValue - slider.MinValue);
+                graphics.FillRectangle(fill, bounds.X, bounds.Y, bounds.Width * t, bounds.Height);
+                drawCalls++;
+            }
+
+            if (entity.GetComponent<UITextComponent>() is { IsEnabled: true } text)
+            {
+                using Font font = new(text.FontFamily, text.FontSize);
+                DrawCenteredText(graphics, text.Text, font, text.Color, bounds);
+                drawCalls++;
+            }
+        }
+
+        return drawCalls;
+    }
+
+    private static void DrawCenteredText(System.Drawing.Graphics graphics, string text, Font font, Color color, RectangleF bounds)
+    {
+        using StringFormat format = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using SolidBrush brush = new(color);
+        graphics.DrawString(text, font, brush, bounds, format);
+    }
 
     private void DrawSprite(System.Drawing.Graphics graphics, Entity entity, SpriteRenderer sprite, Size viewportSize, IReadOnlyList<Light2D> lights)
     {

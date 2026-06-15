@@ -985,6 +985,10 @@ Deliverable:
 
 A Unity 2 milestone release candidate: a documented editor that can create, author, test, build, and ship a complete 2D game project.
 
+Status:
+
+Completed. Phase 30 adds selectable Blank, Platformer, TopDown, and UiHeavy project templates; first-run onboarding and regression checklists in generated projects; a public-workflow Platformer sample under `Samples/PlatformerSample`; and release-hardening documentation covering tutorials, manuals, API reference expectations, and sample validation.
+
 ---
 
 # Coding Standards

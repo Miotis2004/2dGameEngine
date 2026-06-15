@@ -12,6 +12,7 @@ public sealed class NewProjectDialog : Form
 {
     private readonly TextBox _projectNameTextBox;
     private readonly TextBox _projectRootTextBox;
+    private readonly ComboBox _templateComboBox;
     private readonly Button _createButton;
 
     /// <summary>
@@ -24,7 +25,7 @@ public sealed class NewProjectDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(520, 170);
+        ClientSize = new Size(520, 215);
 
         Label nameLabel = new()
         {
@@ -59,17 +60,32 @@ public sealed class NewProjectDialog : Form
         };
         browseButton.Click += OnBrowseClicked;
 
+        Label templateLabel = new()
+        {
+            AutoSize = true,
+            Location = new Point(16, 102),
+            Text = "Template",
+        };
+        _templateComboBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Location = new Point(130, 98),
+            Size = new Size(360, 23),
+        };
+        _templateComboBox.Items.AddRange(Enum.GetNames<ProjectTemplateKind>());
+        _templateComboBox.SelectedItem = ProjectTemplateKind.Platformer.ToString();
+
         _createButton = new Button
         {
             DialogResult = DialogResult.OK,
-            Location = new Point(320, 118),
+            Location = new Point(320, 160),
             Size = new Size(80, 28),
             Text = "Create",
         };
         Button cancelButton = new()
         {
             DialogResult = DialogResult.Cancel,
-            Location = new Point(410, 118),
+            Location = new Point(410, 160),
             Size = new Size(80, 28),
             Text = "Cancel",
         };
@@ -82,6 +98,8 @@ public sealed class NewProjectDialog : Form
         Controls.Add(rootLabel);
         Controls.Add(_projectRootTextBox);
         Controls.Add(browseButton);
+        Controls.Add(templateLabel);
+        Controls.Add(_templateComboBox);
         Controls.Add(_createButton);
         Controls.Add(cancelButton);
     }
@@ -95,6 +113,13 @@ public sealed class NewProjectDialog : Form
     /// Gets the parent directory where the project should be created.
     /// </summary>
     public string ProjectRootDirectory => _projectRootTextBox.Text.Trim();
+
+    /// <summary>
+    /// Gets the selected starter project template.
+    /// </summary>
+    public ProjectTemplateKind Template => Enum.TryParse(Convert.ToString(_templateComboBox.SelectedItem), out ProjectTemplateKind template)
+        ? template
+        : ProjectTemplateKind.Blank;
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {

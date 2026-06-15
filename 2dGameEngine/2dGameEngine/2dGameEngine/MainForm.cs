@@ -1978,14 +1978,14 @@ public sealed class MainForm : Form
 
         try
         {
-            _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName);
+            _currentProject = EditorProjectScaffolder.CreateProject(dialog.ProjectRootDirectory, dialog.ProjectName, dialog.Template);
             _assetPipeline = new AssetPipeline(_currentProject.AssetsDirectory);
             _scriptDebugSession = ScriptDebugSession.Load(_currentProject.ProjectDirectory);
             _extensibilityService = new EditorExtensibilityService(_currentProject);
             LogExtensibilityCatalog(_extensibilityService.Refresh());
             _assetPipeline.Refresh();
             PopulateProjectAssetsPane(_currentProject);
-            LogToConsole($"Created project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
+            LogToConsole($"Created {dialog.Template} project '{_currentProject.DisplayName}' at {_currentProject.ProjectDirectory}");
             _statusStripLabel.Text = $"Project created: {_currentProject.SafeName}";
         }
         catch (Exception ex)

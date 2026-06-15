@@ -21,6 +21,14 @@ public static class EditorProjectScaffolder
     /// <returns>Information about the created project.</returns>
     public static CreatedProject CreateProject(string rootDirectory, string projectName)
     {
+        return CreateProject(rootDirectory, projectName, ProjectTemplateKind.Blank);
+    }
+
+    /// <summary>
+    /// Creates a complete C# solution for a new game project using the requested starter template.
+    /// </summary>
+    public static CreatedProject CreateProject(string rootDirectory, string projectName, ProjectTemplateKind template)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(projectName);
 
@@ -45,6 +53,8 @@ public static class EditorProjectScaffolder
         Directory.CreateDirectory(Path.Combine(editorDirectory, "Properties"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Sprites"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Audio"));
+        Directory.CreateDirectory(Path.Combine(assetsDirectory, "Fonts"));
+        Directory.CreateDirectory(Path.Combine(assetsDirectory, "UI"));
         Directory.CreateDirectory(scenesDirectory);
         Directory.CreateDirectory(packagesDirectory);
         Directory.CreateDirectory(extensionsDirectory);
@@ -62,18 +72,20 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(gameDirectory, $"{safeName}.Game.csproj"), CreateGameProject(safeName));
         WriteFile(Path.Combine(gameDirectory, "GameBootstrapper.cs"), CreateGameBootstrapper(safeName));
         WriteFile(Path.Combine(gameDirectory, "Scripts", "CSharpBehaviour.cs"), CreateCSharpBehaviour(safeName));
-        WriteFile(Path.Combine(gameDirectory, "Scripts", "PlayerController.cs"), CreateStarterScript(safeName));
+        WriteFile(Path.Combine(gameDirectory, "Scripts", "PlayerController.cs"), CreateStarterScript(safeName, template));
         WriteFile(Path.Combine(editorDirectory, $"{safeName}.Editor.csproj"), CreateEditorProject(safeName));
         WriteFile(Path.Combine(editorDirectory, "Program.cs"), CreateEditorProgram(safeName));
         WriteFile(Path.Combine(editorDirectory, "Properties", "launchSettings.json"), CreateLaunchSettings(safeName));
-        WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(projectName));
-        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "Unity2Project.json"), CreateProjectSettings(projectName));
+        WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(template));
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "Unity2Project.json"), CreateProjectSettings(projectName, template));
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "OnboardingChecklist.md"), CreateOnboardingChecklist(template));
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "RegressionChecklist.md"), CreateRegressionChecklist(template));
         WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "ScriptTooling.json"), CreateScriptToolingSettings());
         WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "EditorExtensibility.json"), CreateEditorExtensibilitySettings());
         WriteFile(Path.Combine(packagesDirectory, "README.md"), CreatePackagesReadme());
         WriteFile(Path.Combine(extensionsDirectory, "README.md"), CreateExtensionsReadme());
         WriteFile(Path.Combine(extensionsDirectory, "SampleInspector", "extension.json"), CreateSampleExtensionManifest());
-        WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder. Runtime behavior is authored only in C#.\n");
+        WriteFile(Path.Combine(assetsDirectory, "README.md"), CreateAssetsReadme(template));
 
         return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory, packagesDirectory, extensionsDirectory);
     }
@@ -252,12 +264,22 @@ public abstract class CSharpBehaviour
 }
 """;
 
-    private static string CreateStarterScript(string safeName) => $$"""
+    private static string CreateStarterScript(string safeName, ProjectTemplateKind template)
+    {
+        string updateComment = template switch
+        {
+            ProjectTemplateKind.Platformer => "// Read horizontal input, jump, and drive Rigidbody2D state here.",
+            ProjectTemplateKind.TopDown => "// Read WASD or gamepad input and move on the X/Y plane here.",
+            ProjectTemplateKind.UiHeavy => "// Route menu selections, HUD state, and screen transitions here.",
+            _ => "// Add C# gameplay behavior here.",
+        };
+
+        return $$"""
 namespace {{safeName}}.Game.Scripts;
 
 public sealed class PlayerController : CSharpBehaviour
 {
-    public string DisplayName { get; set; } = "Player Controller";
+    public new string DisplayName { get; set; } = "Player Controller";
 
     public override void Start()
     {
@@ -266,10 +288,11 @@ public sealed class PlayerController : CSharpBehaviour
 
     public override void Update(float deltaTime)
     {
-        // Add C# gameplay behavior here.
+        {{updateComment}}
     }
 }
 """;
+    }
 
     private static string CreateEditorProgram(string safeName) => $$"""
 using {{safeName}}.Game;
@@ -349,11 +372,14 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
 * `Scenes` - Scene files.
 * `Packages` - Installed local editor/runtime packages with `package.json` manifests.
 * `Extensions` - C# editor extension manifests and source files.
+* `ProjectSettings/OnboardingChecklist.md` - First-run guided authoring walkthrough.
+* `ProjectSettings/RegressionChecklist.md` - Import, edit, play, build, and launch release checks.
 """;
 
-    private static string CreateProjectSettings(string projectName) => $$"""
+    private static string CreateProjectSettings(string projectName, ProjectTemplateKind template) => $$"""
 {
   "productName": "{{projectName.Replace("\"", "\\\"")}}",
+  "template": "{{template}}",
   "editor": "Unity 2 Clone",
   "dimension": "2D",
   "scriptingBackend": "CSharpOnly",
@@ -365,12 +391,68 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
 }
 """;
 
-    private static string CreateDefaultScene(string projectName) => $$"""
+    private static string CreateDefaultScene(ProjectTemplateKind template)
+    {
+        string entities = template switch
+        {
+            ProjectTemplateKind.Platformer => """
+  "entities": [
+    { "name": "Player", "isEnabled": true, "transform": { "position": { "x": -4, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "components": [], "children": [] },
+    { "name": "Ground", "isEnabled": true, "transform": { "position": { "x": 0, "y": 2 }, "rotation": 0, "scale": { "x": 12, "y": 1 } }, "components": [], "children": [] },
+    { "name": "Goal", "isEnabled": true, "transform": { "position": { "x": 5, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "components": [], "children": [] }
+  ]
+""",
+            ProjectTemplateKind.TopDown => """
+  "entities": [
+    { "name": "Player", "isEnabled": true, "transform": { "position": { "x": 0, "y": 0 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "components": [], "children": [] },
+    { "name": "CameraTarget", "isEnabled": true, "transform": { "position": { "x": 0, "y": 0 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "components": [], "children": [] }
+  ]
+""",
+            ProjectTemplateKind.UiHeavy => """
+  "entities": [
+    { "name": "MainMenuCanvas", "isEnabled": true, "transform": { "position": { "x": 0, "y": 0 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "components": [], "children": [] }
+  ]
+""",
+            _ => "  \"entities\": []",
+        };
+
+        return $$"""
 {
   "schemaVersion": 1,
   "name": "Main",
-  "entities": []
+{{entities}}
 }
+""";
+    }
+
+    private static string CreateAssetsReadme(ProjectTemplateKind template) => $$"""
+# Assets
+
+Place sprites, audio, fonts, and other imported content in this folder. Runtime behavior is authored only in C#.
+
+Template: `{{template}}`
+""";
+
+    private static string CreateOnboardingChecklist(ProjectTemplateKind template) => $$"""
+# First-Run Onboarding
+
+1. Open `Scenes/Main.scene.json` and confirm the `{{template}}` starter entities are present.
+2. Import one sprite or texture into `Assets/Sprites`.
+3. Attach or edit `src/*Game/Scripts/PlayerController.cs`.
+4. Press Play, verify the game viewport runs, then Stop to restore edit mode.
+5. Use Build Project to create a desktop build.
+""";
+
+    private static string CreateRegressionChecklist(ProjectTemplateKind template) => $$"""
+# Regression Checklist
+
+Use this checklist before shipping changes to a `{{template}}` project.
+
+- [ ] Import: refresh assets and validate metadata.
+- [ ] Edit: save and reload `Scenes/Main.scene.json`.
+- [ ] Play: enter play mode, pause, step, and stop without losing edits.
+- [ ] Build: create a release build and inspect generated manifest files.
+- [ ] Launch: run the packaged player from the build output.
 """;
 }
 
@@ -378,3 +460,21 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
 /// Describes a project created from the editor shell.
 /// </summary>
 public sealed record CreatedProject(string DisplayName, string SafeName, string ProjectDirectory, string SolutionPath, string AssetsDirectory, string ScenesDirectory, string PackagesDirectory, string ExtensionsDirectory);
+
+/// <summary>
+/// Identifies the starter content generated for a new project.
+/// </summary>
+public enum ProjectTemplateKind
+{
+    /// <summary>A minimal empty scene for custom game types.</summary>
+    Blank,
+
+    /// <summary>A side-scrolling starter layout with player, ground, and goal markers.</summary>
+    Platformer,
+
+    /// <summary>A top-down starter layout for movement on both axes.</summary>
+    TopDown,
+
+    /// <summary>A UI-oriented starter layout for menus and HUD-heavy games.</summary>
+    UiHeavy,
+}

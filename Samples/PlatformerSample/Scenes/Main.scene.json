@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "name": "Main",
+  "entities": [
+    {
+      "name": "Player",
+      "isEnabled": true,
+      "transform": { "position": { "x": -4, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } },
+      "components": [],
+      "children": []
+    },
+    {
+      "name": "Ground",
+      "isEnabled": true,
+      "transform": { "position": { "x": 0, "y": 2 }, "rotation": 0, "scale": { "x": 12, "y": 1 } },
+      "components": [],
+      "children": []
+    },
+    {
+      "name": "Goal",
+      "isEnabled": true,
+      "transform": { "position": { "x": 5, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } },
+      "components": [],
+      "children": []
+    }
+  ]
+}

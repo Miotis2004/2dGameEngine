@@ -1,0 +1,12 @@
+{
+  "productName": "Platformer Sample",
+  "template": "Platformer",
+  "editor": "Unity 2 Clone",
+  "dimension": "2D",
+  "scriptingBackend": "CSharpOnly",
+  "supportedLanguages": ["CSharp"],
+  "scriptDebugging": true,
+  "hotReload": true,
+  "editorExtensibility": true,
+  "packageManagement": true
+}

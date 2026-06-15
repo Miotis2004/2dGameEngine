@@ -929,7 +929,7 @@ public sealed class MainForm : Form
         playerEntity.AddComponent(new RigidBody2D());
         playerEntity.AddComponent(new BoxCollider2D(new Vector2(42.0f, 58.0f)));
         playerEntity.AddComponent(new PlatformerMovementComponent(285.0f, 610.0f));
-        playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10 });
+        playerEntity.AddComponent(new SpriteRenderer(new Vector2(42.0f, 58.0f), Color.CornflowerBlue) { SortingOrder = 10, RenderLayer = RenderLayerMask.Gameplay, Material = new Material2D { Name = "Lit Player", Tint = Color.White, ReceivesLighting = true } });
         playerEntity.AddComponent(new AnimationPlayer(playerIdle));
 
         Entity level = scene.CreateEntity("Validation Tilemap Level");
@@ -937,6 +937,8 @@ public sealed class MainForm : Form
         Tilemap tilemap = level.AddComponent(new Tilemap(48, 14, new Vector2(32.0f, 32.0f))
         {
             SortingOrder = -10,
+            RenderLayer = RenderLayerMask.Background,
+            Material = new Material2D { Name = "Lit Tilemap", Tint = Color.White, ReceivesLighting = true },
         });
         tilemap.SetDefinition(new TileDefinition(1, Color.ForestGreen) { Frame = tileSprites.GetFrame("grass") });
         tilemap.SetDefinition(new TileDefinition(2, Color.SaddleBrown) { Frame = tileSprites.GetFrame("dirt") });
@@ -964,7 +966,14 @@ public sealed class MainForm : Form
         Entity goalEntity = scene.CreateEntity("Goal Flag");
         goalEntity.Transform.Value.Position = new Vector2(840.0f, 68.0f);
         goalEntity.AddComponent(new BoxCollider2D(new Vector2(44.0f, 96.0f)) { IsTrigger = true });
-        goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8 });
+        goalEntity.AddComponent(new SpriteRenderer(new Vector2(44.0f, 96.0f), Color.Gold) { OutlineColor = Color.OrangeRed, SortingOrder = 8, RenderLayer = RenderLayerMask.Gameplay, Material = new Material2D { Name = "Goal Glow", Tint = Color.White, ReceivesLighting = true } });
+
+        Entity sun = scene.CreateEntity("Global Light 2D");
+        sun.AddComponent(new Light2D { LightType = Light2DType.Global, Color = Color.White, Intensity = 0.25f, LayerMask = RenderLayerMask.Everything });
+
+        Entity goalLight = scene.CreateEntity("Goal Point Light 2D");
+        goalLight.Transform.Value.Position = goalEntity.Transform.Value.Position;
+        goalLight.AddComponent(new Light2D { LightType = Light2DType.Point, Color = Color.Gold, Intensity = 1.1f, Radius = 320.0f, LayerMask = RenderLayerMask.Gameplay | RenderLayerMask.Background });
 
         return scene;
     }
@@ -1540,7 +1549,7 @@ public sealed class MainForm : Form
     {
         return component switch
         {
-            SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame, PrimitiveType = sprite.PrimitiveType },
+            SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame, PrimitiveType = sprite.PrimitiveType, RenderLayer = sprite.RenderLayer, Material = sprite.Material.Clone() },
             BoxCollider2D box => new BoxCollider2D(box.Size) { Offset = box.Offset, IsTrigger = box.IsTrigger },
             RigidBody2D body => new RigidBody2D { Velocity = body.Velocity, GravityScale = body.GravityScale, IsKinematic = body.IsKinematic },
             EntityMotionComponent motion => new EntityMotionComponent(motion.Velocity),
@@ -1548,6 +1557,8 @@ public sealed class MainForm : Form
             PlatformerMovementComponent platformer => new PlatformerMovementComponent(platformer.MoveSpeed, platformer.JumpSpeed),
             TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger },
             Tilemap tilemap => CloneTilemap(tilemap),
+            Light2D light => new Light2D { LightType = light.LightType, Color = light.Color, Intensity = light.Intensity, Radius = light.Radius, SpotAngle = light.SpotAngle, LayerMask = light.LayerMask },
+            SortingGroup2D group => new SortingGroup2D { SortingOrderOffset = group.SortingOrderOffset, Layer = group.Layer },
             AuthoredScriptComponent script => new AuthoredScriptComponent(script.ClassName, script.ScriptPath) { Description = script.Description },
             _ => null,
         };
@@ -1560,6 +1571,8 @@ public sealed class MainForm : Form
         Tilemap clone = new(source.Width, source.Height, source.TileSize)
         {
             SortingOrder = source.SortingOrder,
+            RenderLayer = source.RenderLayer,
+            Material = source.Material.Clone(),
         };
         foreach (TileDefinition definition in source.Definitions.Values)
         {

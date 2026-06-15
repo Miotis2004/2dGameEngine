@@ -64,6 +64,16 @@ public sealed class Tilemap : Component
     public int SortingOrder { get; set; }
 
     /// <summary>
+    /// Gets or sets the render layer used by camera culling and 2D lights.
+    /// </summary>
+    public RenderLayerMask RenderLayer { get; set; } = RenderLayerMask.Default;
+
+    /// <summary>
+    /// Gets the material controlling tint, blend, and lighting behavior.
+    /// </summary>
+    public Material2D Material { get; set; } = new();
+
+    /// <summary>
     /// Gets the registered tile definitions keyed by tile id.
     /// </summary>
     public IReadOnlyDictionary<int, TileDefinition> Definitions => _definitions;

@@ -20,6 +20,11 @@ public sealed class Camera2D
     public float Zoom { get; set; } = 1.0f;
 
     /// <summary>
+    /// Gets or sets the render layers visible to this camera.
+    /// </summary>
+    public RenderLayerMask CullingMask { get; set; } = RenderLayerMask.Everything;
+
+    /// <summary>
     /// Converts a world-space point to a screen-space point.
     /// </summary>
     /// <param name="worldPosition">The point in world space.</param>

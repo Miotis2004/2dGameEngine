@@ -160,16 +160,18 @@ public static class SceneSerializer
         {
             EntityMotionComponent motion => new ComponentDocument("EntityMotion", Velocity: ToVectorDocument(motion.Velocity)),
             EntityInputMovementComponent movement => new ComponentDocument("EntityInputMovement", Speed: movement.Speed),
-            SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame), PrimitiveType: sprite.PrimitiveType.ToString()),
+            SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame), PrimitiveType: sprite.PrimitiveType.ToString(), RenderLayer: sprite.RenderLayer.ToString(), Material: ToMaterialDocument(sprite.Material)),
             RigidBody2D body => new ComponentDocument("RigidBody2D", Velocity: ToVectorDocument(body.Velocity), GravityScale: body.GravityScale, IsKinematic: body.IsKinematic),
             BoxCollider2D box => new ComponentDocument("BoxCollider2D", Size: ToVectorDocument(box.Size), Offset: ToVectorDocument(box.Offset), IsTrigger: box.IsTrigger),
             TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger),
             PlatformerMovementComponent platformer => new ComponentDocument("PlatformerMovement", MoveSpeed: platformer.MoveSpeed, JumpSpeed: platformer.JumpSpeed),
             AnimationPlayer animation => ToAnimationPlayerDocument(animation),
             Animator animator => ToAnimatorDocument(animator),
-            Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
+            Tilemap tilemap => new ComponentDocument("Tilemap", Width: tilemap.Width, Height: tilemap.Height, TileSize: ToVectorDocument(tilemap.TileSize), SortingOrder: tilemap.SortingOrder, RenderLayer: tilemap.RenderLayer.ToString(), Material: ToMaterialDocument(tilemap.Material), Definitions: tilemap.Definitions.Values.OrderBy(definition => definition.Id).Select(ToTileDefinitionDocument).ToArray(), Tiles: ToTileRows(tilemap)),
             AuthoredScriptComponent script => new ComponentDocument("AuthoredScript", ScriptClass: script.ClassName, ScriptPath: script.ScriptPath, ScriptDescription: script.Description, ScriptProperties: script.Properties.OrderBy(pair => pair.Key).Select(pair => new ScriptPropertyDocument(pair.Key, pair.Value)).ToArray()),
             PrefabInstanceComponent prefab => new ComponentDocument("PrefabInstance", PrefabPath: prefab.PrefabPath, PrefabIsConnected: prefab.IsConnected, PrefabOverrides: prefab.Overrides.Select(prefabOverride => new PrefabOverrideDocument(prefabOverride.EntityPath, prefabOverride.PropertyPath, prefabOverride.Value)).ToArray()),
+            Light2D light => new ComponentDocument("Light2D", LightType: light.LightType.ToString(), Color: ToColorString(light.Color), Intensity: light.Intensity, Radius: light.Radius, SpotAngle: light.SpotAngle, RenderLayer: light.LayerMask.ToString()),
+            SortingGroup2D group => new ComponentDocument("SortingGroup2D", SortingOrder: group.SortingOrderOffset, RenderLayer: group.Layer.ToString()),
             _ => throw new NotSupportedException($"Component type '{component.GetType().FullName}' is not supported by scene serialization."),
         };
 
@@ -212,6 +214,8 @@ public static class SceneSerializer
             "Tilemap" => CreateTilemap(document, assets),
             "AuthoredScript" => CreateAuthoredScript(document),
             "PrefabInstance" => CreatePrefabInstance(document),
+            "Light2D" => CreateLight2D(document),
+            "SortingGroup2D" => new SortingGroup2D { SortingOrderOffset = document.SortingOrder ?? 0, Layer = ParseRenderLayer(document.RenderLayer) },
             _ => throw new NotSupportedException($"Scene component type '{document.Type}' is not supported."),
         };
     }
@@ -262,10 +266,47 @@ public static class SceneSerializer
             SortingOrder = document.SortingOrder ?? 0,
             Frame = FromFrameReference(document.Frame, assets),
             PrimitiveType = Enum.TryParse(document.PrimitiveType, ignoreCase: true, out SpritePrimitiveType primitiveType) ? primitiveType : SpritePrimitiveType.Rectangle,
+            RenderLayer = ParseRenderLayer(document.RenderLayer),
+            Material = FromMaterialDocument(document.Material),
         };
 
         return sprite;
     }
+
+    private static Light2D CreateLight2D(ComponentDocument document) => new()
+    {
+        LightType = Enum.TryParse(document.LightType, ignoreCase: true, out Light2DType lightType) ? lightType : Light2DType.Point,
+        Color = FromColorString(document.Color ?? "#FFFFFFFF"),
+        Intensity = document.Intensity ?? 1.0f,
+        Radius = document.Radius ?? 240.0f,
+        SpotAngle = document.SpotAngle ?? 45.0f,
+        LayerMask = ParseRenderLayer(document.RenderLayer),
+    };
+
+    private static RenderLayerMask ParseRenderLayer(string? value) =>
+        Enum.TryParse(value, ignoreCase: true, out RenderLayerMask layer) ? layer : RenderLayerMask.Default;
+
+    private static MaterialDocument ToMaterialDocument(Material2D material) => new(
+        material.Name,
+        ToColorString(material.Tint),
+        material.BlendMode.ToString(),
+        material.TexturePath,
+        material.NormalMapPath,
+        material.Shader,
+        material.ReceivesLighting);
+
+    private static Material2D FromMaterialDocument(MaterialDocument? document) => document is null
+        ? new Material2D()
+        : new Material2D
+        {
+            Name = document.Name ?? "Default 2D Material",
+            Tint = FromColorString(document.Tint ?? "#FFFFFFFF"),
+            BlendMode = Enum.TryParse(document.BlendMode, ignoreCase: true, out MaterialBlendMode blendMode) ? blendMode : MaterialBlendMode.AlphaBlend,
+            TexturePath = document.TexturePath,
+            NormalMapPath = document.NormalMapPath,
+            Shader = document.Shader ?? "Sprites/Lit",
+            ReceivesLighting = document.ReceivesLighting ?? true,
+        };
 
     private static AnimationPlayer CreateAnimationPlayer(ComponentDocument document, AssetManager? assets)
     {
@@ -315,6 +356,8 @@ public static class SceneSerializer
         Tilemap tilemap = new(document.Width ?? 1, document.Height ?? 1, FromVectorDocument(document.TileSize))
         {
             SortingOrder = document.SortingOrder ?? 0,
+            RenderLayer = ParseRenderLayer(document.RenderLayer),
+            Material = FromMaterialDocument(document.Material),
         };
 
         foreach (TileDefinitionDocument definitionDocument in document.Definitions ?? [])
@@ -434,6 +477,8 @@ public static class SceneSerializer
 
     private sealed record PrefabOverrideDocument(string EntityPath, string PropertyPath, string? Value);
 
+    private sealed record MaterialDocument(string? Name, string? Tint, string? BlendMode, string? TexturePath, string? NormalMapPath, string? Shader, bool? ReceivesLighting);
+
     private sealed record ComponentDocument(
         string Type,
         bool IsEnabled = true,
@@ -466,5 +511,11 @@ public static class SceneSerializer
         ScriptPropertyDocument[]? ScriptProperties = null,
         string? PrefabPath = null,
         bool? PrefabIsConnected = null,
-        PrefabOverrideDocument[]? PrefabOverrides = null);
+        PrefabOverrideDocument[]? PrefabOverrides = null,
+        string? RenderLayer = null,
+        MaterialDocument? Material = null,
+        string? LightType = null,
+        float? Intensity = null,
+        float? Radius = null,
+        float? SpotAngle = null);
 }

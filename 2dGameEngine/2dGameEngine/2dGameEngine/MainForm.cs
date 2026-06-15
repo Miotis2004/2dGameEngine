@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
 using _2dGameEngine.Animation;
+using _2dGameEngine.Audio;
 using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
@@ -45,6 +46,10 @@ public sealed class MainForm : Form
     private readonly Panel _gameViewport;
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
+    private readonly ListView _audioMixerList;
+    private readonly TrackBar _audioVolumeSlider;
+    private readonly Label _audioMixerStatusLabel;
+    private AudioMixerGroup? _selectedMixerGroup;
     private readonly ToolStripButton _addSpriteButton;
     private readonly ToolStripButton _addTilemapButton;
     private readonly ToolStripButton _tilePaintButton;
@@ -354,6 +359,36 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Font = new Font(FontFamily.GenericMonospace, 9.0f),
         };
+        _audioMixerList = new ListView
+        {
+            Dock = DockStyle.Fill,
+            FullRowSelect = true,
+            GridLines = true,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            View = View.Details,
+        };
+        _audioMixerList.Columns.Add("Group", 90);
+        _audioMixerList.Columns.Add("Volume", 70);
+        _audioMixerList.Columns.Add("Muted", 55);
+        _audioMixerList.Columns.Add("Solo", 45);
+        _audioMixerList.SelectedIndexChanged += OnAudioMixerSelectionChanged;
+        _audioVolumeSlider = new TrackBar
+        {
+            Dock = DockStyle.Bottom,
+            Minimum = 0,
+            Maximum = 100,
+            TickFrequency = 10,
+            Value = 100,
+        };
+        _audioVolumeSlider.Scroll += OnAudioVolumeSliderScrolled;
+        _audioMixerStatusLabel = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 28,
+            Padding = new Padding(8, 6, 8, 0),
+            Text = "Select a bus to adjust volume.",
+        };
+        PopulateAudioMixerEditor();
         LogToConsole("Editor workspace initialized.");
 
         SplitContainer rootSplit = new()
@@ -414,8 +449,16 @@ public sealed class MainForm : Form
             FixedPanel = FixedPanel.Panel1,
             SplitterDistance = 360,
         };
+        SplitContainer paletteAudioSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            SplitterDistance = 280,
+        };
         statusTileSplit.Panel1.Controls.Add(CreateDockPanel("Runtime Status", _runtimeStatusLabel));
-        statusTileSplit.Panel2.Controls.Add(CreateDockPanel("Tile Palette", _tilePaletteList));
+        paletteAudioSplit.Panel1.Controls.Add(CreateDockPanel("Tile Palette", _tilePaletteList));
+        paletteAudioSplit.Panel2.Controls.Add(CreateDockPanel("Audio Mixer", CreateAudioMixerPanel()));
+        statusTileSplit.Panel2.Controls.Add(paletteAudioSplit);
         bottomSplit.Panel2.Controls.Add(statusTileSplit);
         editorGameSplit.Panel1.Controls.Add(CreateDockPanel("Scene Editor", _sceneEditorViewport));
         editorGameSplit.Panel2.Controls.Add(CreateDockPanel("Rendered Game", _gameViewport));
@@ -458,6 +501,8 @@ public sealed class MainForm : Form
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
         _newScriptButton.Click -= OnNewScriptClicked;
+        _audioMixerList.SelectedIndexChanged -= OnAudioMixerSelectionChanged;
+        _audioVolumeSlider.Scroll -= OnAudioVolumeSliderScrolled;
         _undoButton.Click -= OnUndoClicked;
         _redoButton.Click -= OnRedoClicked;
         foreach (ToolStripItem item in _addComponentButton.DropDownItems)
@@ -705,6 +750,127 @@ public sealed class MainForm : Form
         panel.Controls.Add(_inspectorList);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
+    }
+
+    private Control CreateAudioMixerPanel()
+    {
+        Panel panel = new()
+        {
+            Dock = DockStyle.Fill,
+        };
+        FlowLayoutPanel buttons = new()
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            Height = 34,
+            Padding = new Padding(4),
+        };
+        Button muteButton = new()
+        {
+            AutoSize = true,
+            Text = "Mute",
+        };
+        Button soloButton = new()
+        {
+            AutoSize = true,
+            Text = "Solo",
+        };
+        Button resetButton = new()
+        {
+            AutoSize = true,
+            Text = "Reset",
+        };
+        muteButton.Click += (_, _) => ToggleSelectedMixerMute();
+        soloButton.Click += (_, _) => ToggleSelectedMixerSolo();
+        resetButton.Click += (_, _) => ResetSelectedMixerGroup();
+        buttons.Controls.Add(muteButton);
+        buttons.Controls.Add(soloButton);
+        buttons.Controls.Add(resetButton);
+
+        panel.Controls.Add(_audioMixerList);
+        panel.Controls.Add(_audioVolumeSlider);
+        panel.Controls.Add(_audioMixerStatusLabel);
+        panel.Controls.Add(buttons);
+        return panel;
+    }
+
+    private void PopulateAudioMixerEditor()
+    {
+        _audioMixerList.Items.Clear();
+        foreach (AudioMixerGroup group in _engine.Audio.Groups)
+        {
+            ListViewItem item = new(new[]
+            {
+                group.Name,
+                $"{group.Volume:P0}",
+                group.IsMuted ? "Yes" : "No",
+                group.IsSolo ? "Yes" : "No",
+            })
+            {
+                Tag = group,
+            };
+            _audioMixerList.Items.Add(item);
+        }
+    }
+
+    private void OnAudioMixerSelectionChanged(object? sender, EventArgs e)
+    {
+        _selectedMixerGroup = _audioMixerList.SelectedItems.Count == 0 ? null : _audioMixerList.SelectedItems[0].Tag as AudioMixerGroup;
+        if (_selectedMixerGroup is null)
+        {
+            _audioMixerStatusLabel.Text = "Select a bus to adjust volume.";
+            return;
+        }
+
+        _audioVolumeSlider.Value = (int)Math.Round(Math.Clamp(_selectedMixerGroup.Volume, 0.0f, 1.0f) * 100.0f);
+        _audioMixerStatusLabel.Text = $"{_selectedMixerGroup.Name} effective volume {_engine.Audio.GetEffectiveVolume(_selectedMixerGroup.Name):P0}";
+    }
+
+    private void OnAudioVolumeSliderScrolled(object? sender, EventArgs e)
+    {
+        if (_selectedMixerGroup is null)
+        {
+            return;
+        }
+
+        _selectedMixerGroup.Volume = _audioVolumeSlider.Value / 100.0f;
+        PopulateAudioMixerEditor();
+        SelectMixerGroup(_selectedMixerGroup);
+        LogToConsole($"Audio mixer group '{_selectedMixerGroup.Name}' volume set to {_selectedMixerGroup.Volume:P0}.");
+    }
+
+    private void ToggleSelectedMixerMute()
+    {
+        if (_selectedMixerGroup is null) return;
+        _selectedMixerGroup.IsMuted = !_selectedMixerGroup.IsMuted;
+        PopulateAudioMixerEditor();
+        SelectMixerGroup(_selectedMixerGroup);
+    }
+
+    private void ToggleSelectedMixerSolo()
+    {
+        if (_selectedMixerGroup is null) return;
+        _selectedMixerGroup.IsSolo = !_selectedMixerGroup.IsSolo;
+        PopulateAudioMixerEditor();
+        SelectMixerGroup(_selectedMixerGroup);
+    }
+
+    private void ResetSelectedMixerGroup()
+    {
+        if (_selectedMixerGroup is null) return;
+        _selectedMixerGroup.Volume = 1.0f;
+        _selectedMixerGroup.IsMuted = false;
+        _selectedMixerGroup.IsSolo = false;
+        PopulateAudioMixerEditor();
+        SelectMixerGroup(_selectedMixerGroup);
+    }
+
+    private void SelectMixerGroup(AudioMixerGroup group)
+    {
+        foreach (ListViewItem item in _audioMixerList.Items)
+        {
+            item.Selected = ReferenceEquals(item.Tag, group);
+        }
     }
 
 
@@ -1675,6 +1841,16 @@ public sealed class MainForm : Form
                     AddInspectorRow("Slice", $"{asset.SliceWidth} x {asset.SliceHeight}");
                 }
 
+                break;
+            case AudioSourceComponent audioSource:
+                _inspectorHeader.Text = "Audio Source";
+                AddInspectorRow("Type", "AudioSource");
+                AddInspectorRow("Clip", audioSource.Clip?.Name ?? "<none>");
+                AddInspectorRow("Mixer Group", audioSource.MixerGroup);
+                AddInspectorRow("Volume", $"{audioSource.Volume:P0}");
+                AddInspectorRow("Play On Start", audioSource.PlayOnStart.ToString());
+                AddInspectorRow("Loop", audioSource.Loop.ToString());
+                AddInspectorRow("Playing", audioSource.IsPlaying.ToString());
                 break;
             case AuthoredScriptComponent script:
                 _inspectorHeader.Text = script.ClassName;

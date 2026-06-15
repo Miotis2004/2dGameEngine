@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Forms;
+using _2dGameEngine.Audio;
 using _2dGameEngine.Input;
 
 namespace _2dGameEngine.Core;
@@ -18,6 +19,7 @@ public sealed class Engine
     {
         Time = new Time();
         Input = new InputState();
+        Audio = new AudioMixer();
         _updateTimer = new Timer
         {
             Interval = 16,
@@ -49,6 +51,11 @@ public sealed class Engine
     /// Gets the current keyboard and mouse input state.
     /// </summary>
     public InputState Input { get; }
+
+    /// <summary>
+    /// Gets the runtime audio mixer shared by scene audio sources and the editor.
+    /// </summary>
+    public AudioMixer Audio { get; }
 
     /// <summary>
     /// Gets a value indicating whether the engine update loop is running.

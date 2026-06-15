@@ -11,6 +11,7 @@ using _2dGameEngine.Content;
 using _2dGameEngine.Core;
 using _2dGameEngine.Graphics;
 using _2dGameEngine.Input;
+using _2dGameEngine.Performance;
 using _2dGameEngine.Physics;
 using _2dGameEngine.Serialization;
 using _2dGameEngine.Scripting;
@@ -48,6 +49,10 @@ public sealed class MainForm : Form
     private readonly TreeView _projectAssetsTree;
     private readonly ListBox _consoleList;
     private readonly ListView _audioMixerList;
+    private readonly ListView _profilerList;
+    private readonly Label _memoryStatusLabel;
+    private readonly Button _captureMemoryButton;
+    private readonly Button _collectGarbageButton;
     private readonly ListView _effectsList;
     private readonly TrackBar _audioVolumeSlider;
     private readonly Label _audioMixerStatusLabel;
@@ -427,6 +432,37 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Font = new Font(FontFamily.GenericMonospace, 9.0f),
         };
+        _profilerList = new ListView
+        {
+            Dock = DockStyle.Fill,
+            FullRowSelect = true,
+            GridLines = true,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            View = View.Details,
+        };
+        _profilerList.Columns.Add("Metric", 150);
+        _profilerList.Columns.Add("Value", 130);
+        _memoryStatusLabel = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 52,
+            Padding = new Padding(8, 6, 8, 0),
+            Text = "Memory snapshot pending.",
+        };
+        _captureMemoryButton = new Button
+        {
+            AutoSize = true,
+            Text = "Snapshot",
+        };
+        _collectGarbageButton = new Button
+        {
+            AutoSize = true,
+            Text = "Collect GC",
+        };
+        _captureMemoryButton.Click += OnCaptureMemoryClicked;
+        _collectGarbageButton.Click += OnCollectGarbageClicked;
+        PopulateProfilerEditor();
+
         _audioMixerList = new ListView
         {
             Dock = DockStyle.Fill,
@@ -531,8 +567,16 @@ public sealed class MainForm : Form
             Orientation = Orientation.Horizontal,
             SplitterDistance = 100,
         };
+        SplitContainer profilerAudioSplit = new()
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterDistance = 105,
+        };
         effectsAudioSplit.Panel1.Controls.Add(CreateDockPanel("VFX Editor", _effectsList));
-        effectsAudioSplit.Panel2.Controls.Add(CreateDockPanel("Audio Mixer", CreateAudioMixerPanel()));
+        profilerAudioSplit.Panel1.Controls.Add(CreateDockPanel("Profiler / Memory", CreateProfilerPanel()));
+        profilerAudioSplit.Panel2.Controls.Add(CreateDockPanel("Audio Mixer", CreateAudioMixerPanel()));
+        effectsAudioSplit.Panel2.Controls.Add(profilerAudioSplit);
         paletteAudioSplit.Panel2.Controls.Add(effectsAudioSplit);
         statusTileSplit.Panel2.Controls.Add(paletteAudioSplit);
         bottomSplit.Panel2.Controls.Add(statusTileSplit);
@@ -585,6 +629,8 @@ public sealed class MainForm : Form
         _checkScriptsButton.Click -= OnCheckScriptsClicked;
         _hotReloadButton.Click -= OnHotReloadClicked;
         _debugScriptsButton.Click -= OnDebugScriptsClicked;
+        _captureMemoryButton.Click -= OnCaptureMemoryClicked;
+        _collectGarbageButton.Click -= OnCollectGarbageClicked;
         _audioMixerList.SelectedIndexChanged -= OnAudioMixerSelectionChanged;
         _audioVolumeSlider.Scroll -= OnAudioVolumeSliderScrolled;
         _undoButton.Click -= OnUndoClicked;
@@ -834,6 +880,88 @@ public sealed class MainForm : Form
         panel.Controls.Add(_inspectorList);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
+    }
+
+
+    private Control CreateProfilerPanel()
+    {
+        Panel panel = new()
+        {
+            Dock = DockStyle.Fill,
+        };
+        FlowLayoutPanel buttons = new()
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            Height = 34,
+            Padding = new Padding(4),
+        };
+        buttons.Controls.Add(_captureMemoryButton);
+        buttons.Controls.Add(_collectGarbageButton);
+        panel.Controls.Add(_profilerList);
+        panel.Controls.Add(_memoryStatusLabel);
+        panel.Controls.Add(buttons);
+        return panel;
+    }
+
+    private void PopulateProfilerEditor()
+    {
+        _profilerList.Items.Clear();
+        ProfilerFrameSample? latest = _engine.Profiler.LatestFrame;
+        MemorySnapshot memory = _engine.Profiler.LastMemorySnapshot;
+        AddProfilerRow("Frame", latest?.FrameNumber.ToString() ?? "0");
+        AddProfilerRow("FPS", latest is null ? "0.0" : latest.FramesPerSecond.ToString("0.0"));
+        AddProfilerRow("Frame Time", latest is null ? "0.00 ms" : $"{latest.FrameTime.TotalMilliseconds:0.00} ms");
+        AddProfilerRow("Average Frame", $"{_engine.Profiler.AverageFrameMilliseconds:0.00} ms");
+        AddProfilerRow("Peak Frame", $"{_engine.Profiler.PeakFrameMilliseconds:0.00} ms");
+        AddProfilerRow("Frame Alloc", latest is null ? "0 KB" : FormatBytes(latest.AllocatedBytes));
+        AddProfilerRow("Managed Heap", FormatBytes(memory.ManagedBytes));
+        AddProfilerRow("Committed", FormatBytes(memory.TotalCommittedBytes));
+        AddProfilerRow("Heap Size", FormatBytes(memory.HeapSizeBytes));
+        AddProfilerRow("Fragmented", FormatBytes(memory.FragmentedBytes));
+        AddProfilerRow("GC Counts", $"G0 {memory.Gen0Collections} / G1 {memory.Gen1Collections} / G2 {memory.Gen2Collections}");
+        if (latest is not null)
+        {
+            foreach (KeyValuePair<string, TimeSpan> section in latest.Sections)
+            {
+                AddProfilerRow(section.Key, $"{section.Value.TotalMilliseconds:0.00} ms");
+            }
+        }
+
+        _memoryStatusLabel.Text = $"{memory.Reason} @ {memory.CapturedAt:HH:mm:ss} UTC | Managed {FormatBytes(memory.ManagedBytes)}";
+    }
+
+    private void AddProfilerRow(string metric, string value)
+    {
+        _profilerList.Items.Add(new ListViewItem(new[] { metric, value }));
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB"];
+        double value = bytes;
+        int suffix = 0;
+        while (value >= 1024.0 && suffix < suffixes.Length - 1)
+        {
+            value /= 1024.0;
+            suffix++;
+        }
+
+        return $"{value:0.##} {suffixes[suffix]}";
+    }
+
+    private void OnCaptureMemoryClicked(object? sender, EventArgs e)
+    {
+        _engine.Profiler.CaptureMemorySnapshot("Manual snapshot");
+        PopulateProfilerEditor();
+        LogToConsole("Memory snapshot captured.");
+    }
+
+    private void OnCollectGarbageClicked(object? sender, EventArgs e)
+    {
+        MemorySnapshot snapshot = _engine.Profiler.ForceCollection("Manual GC");
+        PopulateProfilerEditor();
+        LogToConsole($"Garbage collection completed. Managed heap: {FormatBytes(snapshot.ManagedBytes)}.");
     }
 
     private Control CreateAudioMixerPanel()
@@ -2390,6 +2518,7 @@ public sealed class MainForm : Form
             _runtimeStatusLabel.Text = FormattableString.Invariant($"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {args.Scene?.Name ?? "<none>"}\nEntities: {args.Scene?.Entities.Count ?? 0}\nRuntime: {genericState}");
             _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {genericState.ToLowerInvariant()}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
             PopulateEffectsEditor();
+            PopulateProfilerEditor();
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
             return;
@@ -2413,6 +2542,7 @@ public sealed class MainForm : Form
             $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_playerEntity.Name}\nObjective: {(_levelComplete ? "Complete" : "Reach the gold flag")}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_playerBody.Velocity.X:0.00}, {_playerBody.Velocity.Y:0.00})\nGrounded: {_playerBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
         _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
         PopulateEffectsEditor();
+        PopulateProfilerEditor();
         _sceneEditorViewport.Invalidate();
         _gameViewport.Invalidate();
     }

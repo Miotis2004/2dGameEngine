@@ -2,6 +2,7 @@ using System;
 using System.Windows.Forms;
 using _2dGameEngine.Audio;
 using _2dGameEngine.Input;
+using _2dGameEngine.Performance;
 using _2dGameEngine.Services;
 
 namespace _2dGameEngine.Core;
@@ -63,6 +64,11 @@ public sealed class Engine
     /// Gets save data, localization, achievements, and leaderboard services for gameplay code.
     /// </summary>
     public GameServices Services { get; }
+
+    /// <summary>
+    /// Gets frame and memory profiling data for editor diagnostics.
+    /// </summary>
+    public PerformanceProfiler Profiler { get; } = new();
 
     /// <summary>
     /// Gets a value indicating whether the engine update loop is running.
@@ -130,10 +136,27 @@ public sealed class Engine
     {
         try
         {
-            Time.Update();
-            ActiveScene?.Update(Time, Input);
-            Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene, Input));
-            Input.AdvanceFrame();
+            Profiler.BeginFrame(Time.FrameCount + 1);
+            using (Profiler.Measure("Time"))
+            {
+                Time.Update();
+            }
+
+            using (Profiler.Measure("Scene Update"))
+            {
+                ActiveScene?.Update(Time, Input);
+            }
+
+            ProfilerFrameSample frameSample = Profiler.EndFrame(Time.FrameCount, Time.DeltaTime, ActiveScene?.Entities.Count ?? 0);
+            using (Profiler.Measure("Editor Events"))
+            {
+                Updated?.Invoke(this, new EngineUpdatedEventArgs(Time, ActiveScene, Input, frameSample));
+            }
+
+            using (Profiler.Measure("Input"))
+            {
+                Input.AdvanceFrame();
+            }
         }
         catch (Exception ex)
         {

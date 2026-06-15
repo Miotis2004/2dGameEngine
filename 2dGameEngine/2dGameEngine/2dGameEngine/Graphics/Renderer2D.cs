@@ -76,6 +76,13 @@ public sealed class Renderer2D
                 DrawSprite(graphics, entity, sprite, viewportSize, lights);
                 drawCalls++;
             }
+
+            ParticleSystem2D? particles = entity.GetComponent<ParticleSystem2D>();
+            if (particles is { IsEnabled: true })
+            {
+                DrawParticles(graphics, particles, viewportSize);
+                drawCalls++;
+            }
         }
 
         drawCalls += DrawUi(graphics, renderEntities, viewportSize);
@@ -121,8 +128,9 @@ public sealed class Renderer2D
         RenderLayerMask mask = Camera.CullingMask & Pipeline.CameraCullingMask;
         SpriteRenderer? sprite = entity.GetComponent<SpriteRenderer>();
         Tilemap? tilemap = entity.GetComponent<Tilemap>();
+        ParticleSystem2D? particles = entity.GetComponent<ParticleSystem2D>();
         SortingGroup2D? group = entity.GetComponent<SortingGroup2D>();
-        RenderLayerMask layer = sprite?.RenderLayer ?? tilemap?.RenderLayer ?? group?.Layer ?? RenderLayerMask.Default;
+        RenderLayerMask layer = sprite?.RenderLayer ?? tilemap?.RenderLayer ?? particles?.RenderLayer ?? group?.Layer ?? RenderLayerMask.Default;
         return (layer & mask) != RenderLayerMask.None;
     }
 
@@ -130,14 +138,9 @@ public sealed class Renderer2D
     {
         SpriteRenderer? sprite = entity.GetComponent<SpriteRenderer>();
         Tilemap? tilemap = entity.GetComponent<Tilemap>();
+        ParticleSystem2D? particles = entity.GetComponent<ParticleSystem2D>();
 
-        int baseOrder = (sprite, tilemap) switch
-        {
-            ({ } spriteRenderer, { } tilemapRenderer) => Math.Min(spriteRenderer.SortingOrder, tilemapRenderer.SortingOrder),
-            ({ } spriteRenderer, null) => spriteRenderer.SortingOrder,
-            (null, { } tilemapRenderer) => tilemapRenderer.SortingOrder,
-            _ => 0,
-        };
+        int baseOrder = new int?[] { sprite?.SortingOrder, tilemap?.SortingOrder, particles?.SortingOrder }.Where(order => order.HasValue).Select(order => order!.Value).DefaultIfEmpty(0).Min();
 
         return baseOrder + (entity.GetComponent<SortingGroup2D>()?.SortingOrderOffset ?? 0);
     }
@@ -309,6 +312,33 @@ public sealed class Renderer2D
         using StringFormat format = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         using SolidBrush brush = new(color);
         graphics.DrawString(text, font, brush, bounds, format);
+    }
+
+    private void DrawParticles(System.Drawing.Graphics graphics, ParticleSystem2D system, Size viewportSize)
+    {
+        float zoom = MathF.Max(0.01f, Camera.Zoom);
+        foreach (Particle2D particle in system.Particles)
+        {
+            float t = particle.NormalizedAge;
+            float size = MathF.Max(1.0f, Lerp(system.StartSize, system.EndSize, t) * zoom);
+            Color color = Lerp(system.StartColor, system.EndColor, t);
+            PointF screenPosition = Camera.WorldToScreen(particle.Position, viewportSize);
+            RectangleF bounds = new(screenPosition.X - size / 2.0f, screenPosition.Y - size / 2.0f, size, size);
+            using SolidBrush brush = new(color);
+            graphics.FillEllipse(brush, bounds);
+        }
+    }
+
+    private static float Lerp(float start, float end, float t) => start + (end - start) * Math.Clamp(t, 0.0f, 1.0f);
+
+    private static Color Lerp(Color start, Color end, float t)
+    {
+        t = Math.Clamp(t, 0.0f, 1.0f);
+        return Color.FromArgb(
+            (int)Lerp(start.A, end.A, t),
+            (int)Lerp(start.R, end.R, t),
+            (int)Lerp(start.G, end.G, t),
+            (int)Lerp(start.B, end.B, t));
     }
 
     private void DrawSprite(System.Drawing.Graphics graphics, Entity entity, SpriteRenderer sprite, Size viewportSize, IReadOnlyList<Light2D> lights)

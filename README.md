@@ -786,6 +786,10 @@ Deliverable:
 
 A configurable 2D render pipeline that supports polished lighting, materials, camera effects, and editor diagnostics.
 
+Status:
+
+Completed. Phase 21 adds material metadata, render layers, camera culling masks, sorting groups, global/point/spot/shape 2D light components, render pipeline visual settings, scene serialization for lighting/material data, and editor add-component recipes for lighting tools. The validation scene now includes lit player/tile/goal materials plus global and point lights.
+
 ---
 
 # Phase 22: UI Canvas and In-Game Interface Builder

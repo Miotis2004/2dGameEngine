@@ -51,4 +51,14 @@ public sealed class SpriteRenderer(Vector2 size, Color color) : Component
     /// Gets or sets the draw order. Higher values are rendered later.
     /// </summary>
     public int SortingOrder { get; set; }
+
+    /// <summary>
+    /// Gets or sets the render layer used by camera culling and 2D lights.
+    /// </summary>
+    public RenderLayerMask RenderLayer { get; set; } = RenderLayerMask.Default;
+
+    /// <summary>
+    /// Gets or sets the material controlling tint, blend, and lighting behavior.
+    /// </summary>
+    public Material2D Material { get; set; } = new();
 }

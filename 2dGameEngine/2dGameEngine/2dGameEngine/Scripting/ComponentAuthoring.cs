@@ -25,6 +25,9 @@ public static class ComponentAuthoring
     public static IReadOnlyList<ComponentRecipe> Recipes { get; } =
     [
         new("Sprite Renderer", "Rendering", () => new SpriteRenderer(new Vector2(64.0f, 64.0f), System.Drawing.Color.White) { OutlineColor = System.Drawing.Color.LightSkyBlue }),
+        new("Point Light 2D", "Rendering", () => new Light2D { LightType = Light2DType.Point, Color = System.Drawing.Color.White, Intensity = 1.2f, Radius = 260.0f }),
+        new("Global Light 2D", "Rendering", () => new Light2D { LightType = Light2DType.Global, Color = System.Drawing.Color.White, Intensity = 0.35f }),
+        new("Sorting Group 2D", "Rendering", () => new SortingGroup2D()),
         new("Box Collider 2D", "Physics", () => new BoxCollider2D(new Vector2(64.0f, 64.0f))),
         new("Rigid Body 2D", "Physics", () => new RigidBody2D()),
         new("Entity Motion", "Core", () => new EntityMotionComponent(Vector2.Zero)),

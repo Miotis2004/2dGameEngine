@@ -1605,12 +1605,16 @@ public sealed class MainForm : Form
         return component switch
         {
             SpriteRenderer sprite => new SpriteRenderer(sprite.Size, sprite.Color) { OutlineColor = sprite.OutlineColor, SortingOrder = sprite.SortingOrder, Frame = sprite.Frame, PrimitiveType = sprite.PrimitiveType, RenderLayer = sprite.RenderLayer, Material = sprite.Material.Clone() },
-            BoxCollider2D box => new BoxCollider2D(box.Size) { Offset = box.Offset, IsTrigger = box.IsTrigger },
-            RigidBody2D body => new RigidBody2D { Velocity = body.Velocity, GravityScale = body.GravityScale, IsKinematic = body.IsKinematic },
+            BoxCollider2D box => new BoxCollider2D(box.Size) { Offset = box.Offset, IsTrigger = box.IsTrigger, Layer = box.Layer, Material = box.Material },
+            CircleCollider2D circle => new CircleCollider2D(circle.Radius) { Offset = circle.Offset, IsTrigger = circle.IsTrigger, Layer = circle.Layer, Material = circle.Material },
+            CapsuleCollider2D capsule => new CapsuleCollider2D(capsule.Size) { Offset = capsule.Offset, IsTrigger = capsule.IsTrigger, Layer = capsule.Layer, Material = capsule.Material },
+            PolygonCollider2D polygon => ClonePolygonCollider(polygon),
+            RigidBody2D body => new RigidBody2D { Velocity = body.Velocity, GravityScale = body.GravityScale, IsKinematic = body.IsKinematic, Constraints = body.Constraints, IsSleeping = body.IsSleeping },
             EntityMotionComponent motion => new EntityMotionComponent(motion.Velocity),
             EntityInputMovementComponent movement => new EntityInputMovementComponent(movement.Speed),
             PlatformerMovementComponent platformer => new PlatformerMovementComponent(platformer.MoveSpeed, platformer.JumpSpeed),
-            TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger },
+            TilemapCollider2D collider => new TilemapCollider2D { Offset = collider.Offset, IsTrigger = collider.IsTrigger, Layer = collider.Layer, Material = collider.Material },
+            PhysicsJoint2D joint => new PhysicsJoint2D { JointType = joint.JointType, ConnectedEntity = joint.ConnectedEntity, Anchor = joint.Anchor, ConnectedAnchor = joint.ConnectedAnchor, Distance = joint.Distance, Frequency = joint.Frequency, DampingRatio = joint.DampingRatio, MotorSpeed = joint.MotorSpeed, MaxMotorForce = joint.MaxMotorForce },
             Tilemap tilemap => CloneTilemap(tilemap),
             Light2D light => new Light2D { LightType = light.LightType, Color = light.Color, Intensity = light.Intensity, Radius = light.Radius, SpotAngle = light.SpotAngle, LayerMask = light.LayerMask },
             SortingGroup2D group => new SortingGroup2D { SortingOrderOffset = group.SortingOrderOffset, Layer = group.Layer },
@@ -1628,6 +1632,14 @@ public sealed class MainForm : Form
     }
 
 
+
+    private static PolygonCollider2D ClonePolygonCollider(PolygonCollider2D polygon)
+    {
+        PolygonCollider2D clone = new() { Offset = polygon.Offset, IsTrigger = polygon.IsTrigger, Layer = polygon.Layer, Material = polygon.Material };
+        clone.Points.Clear();
+        clone.Points.AddRange(polygon.Points);
+        return clone;
+    }
 
     private static Tilemap CloneTilemap(Tilemap source)
     {
@@ -2092,6 +2104,28 @@ public sealed class MainForm : Form
                 AddInspectorRow("Definitions", tilemap.Definitions.Count.ToString());
                 AddInspectorRow("Sorting Order", tilemap.SortingOrder.ToString());
                 break;
+            case RigidBody2D body:
+                _inspectorHeader.Text = "RigidBody 2D";
+                AddInspectorRow("Velocity", FormattableString.Invariant($"{body.Velocity.X:0.##}, {body.Velocity.Y:0.##}"));
+                AddInspectorRow("Gravity Scale", body.GravityScale.ToString("0.##"));
+                AddInspectorRow("Kinematic", body.IsKinematic.ToString());
+                AddInspectorRow("Constraints", body.Constraints.ToString());
+                AddInspectorRow("Sleeping", body.IsSleeping.ToString());
+                break;
+            case Collider2D collider:
+                _inspectorHeader.Text = collider.GetType().Name;
+                AddInspectorRow("Trigger", collider.IsTrigger.ToString());
+                AddInspectorRow("Layer", collider.Layer.ToString());
+                AddInspectorRow("Material", $"{collider.Material.Name} F:{collider.Material.Friction:0.##} B:{collider.Material.Bounciness:0.##} D:{collider.Material.Density:0.##}");
+                AddInspectorRow("Bounds", collider.GetBounds().ToString());
+                break;
+            case PhysicsJoint2D joint:
+                _inspectorHeader.Text = "Physics Joint 2D";
+                AddInspectorRow("Type", joint.JointType.ToString());
+                AddInspectorRow("Distance", joint.Distance.ToString("0.##"));
+                AddInspectorRow("Frequency", joint.Frequency.ToString("0.##"));
+                AddInspectorRow("Motor", $"{joint.MotorSpeed:0.##} / {joint.MaxMotorForce:0.##}");
+                break;
             case Component component:
                 _inspectorHeader.Text = component.GetType().Name;
                 AddInspectorRow("Type", component.GetType().Name);
@@ -2149,6 +2183,7 @@ public sealed class MainForm : Form
         _renderer.Render(e.Graphics, _engine.ActiveScene, _sceneEditorViewport.ClientSize);
         DrawSelectionOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
         DrawTilemapEditingOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
+        DrawPhysicsDebugOverlay(e.Graphics, _sceneEditorViewport.ClientSize);
     }
 
     private void OnGameViewportPaint(object? sender, PaintEventArgs e)
@@ -2561,6 +2596,36 @@ public sealed class MainForm : Form
             RectangleF bounds = tilemap.GetBounds();
             PointF left = _renderer.Camera.WorldToScreen(new Vector2(bounds.X, bounds.Y + y * tilemap.TileSize.Y), viewportSize);
             graphics.DrawLine(gridPen, left.X, left.Y, left.X + bounds.Width * zoom, left.Y);
+        }
+    }
+
+    private void DrawPhysicsDebugOverlay(System.Drawing.Graphics graphics, Size viewportSize)
+    {
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null) return;
+
+        float zoom = MathF.Max(0.01f, _renderer.Camera.Zoom);
+        using Pen colliderPen = new(Color.FromArgb(220, Color.LawnGreen), 1.5f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+        using Pen triggerPen = new(Color.FromArgb(220, Color.Gold), 1.5f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+        using Pen normalPen = new(Color.HotPink, 2.0f);
+        using SolidBrush sleepingBrush = new(Color.FromArgb(160, Color.MediumPurple));
+        foreach (Collider2D collider in CollisionWorld.GetColliders(scene))
+        {
+            RectangleF bounds = collider.GetBounds();
+            PointF p = _renderer.Camera.WorldToScreen(new Vector2(bounds.X, bounds.Y), viewportSize);
+            graphics.DrawRectangle(collider.IsTrigger ? triggerPen : colliderPen, p.X, p.Y, bounds.Width * zoom, bounds.Height * zoom);
+        }
+
+        foreach (PhysicsContact contact in scene.Physics.LastDebugSnapshot.Contacts)
+        {
+            PointF p = _renderer.Camera.WorldToScreen(contact.Point, viewportSize);
+            graphics.DrawLine(normalPen, p.X, p.Y, p.X + contact.Normal.X * 28.0f, p.Y + contact.Normal.Y * 28.0f);
+        }
+
+        foreach (Entity sleeping in scene.Physics.LastDebugSnapshot.SleepingBodies)
+        {
+            PointF p = _renderer.Camera.WorldToScreen(sleeping.Transform.Value.Position, viewportSize);
+            graphics.FillEllipse(sleepingBrush, p.X - 5.0f, p.Y - 5.0f, 10.0f, 10.0f);
         }
     }
 

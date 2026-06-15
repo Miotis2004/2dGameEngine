@@ -23,6 +23,12 @@ public sealed class RigidBody2D : Component
     /// </summary>
     public bool IsKinematic { get; set; }
 
+    /// <summary>Gets or sets body constraints authored in the editor.</summary>
+    public RigidbodyConstraint2D Constraints { get; set; }
+
+    /// <summary>Gets or sets whether the body is sleeping and skipped by debug diagnostics.</summary>
+    public bool IsSleeping { get; set; }
+
     /// <summary>
     /// Gets a value indicating whether the body touched walkable ground during the latest physics step.
     /// </summary>

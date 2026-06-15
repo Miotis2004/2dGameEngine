@@ -878,6 +878,8 @@ Deliverable:
 
 A robust 2D physics authoring workflow with visual debugging and enough component coverage for common platformer, puzzle, and action games.
 
+Completed. Phase 25 adds editor-authorable physics materials, layer collision filtering, rigidbody constraints and sleeping diagnostics, circle/capsule/polygon collider shapes, joint component metadata, deterministic fixed-step settings, scene serialization for new physics authoring components, and viewport overlays for collider bounds, contacts, normals, and sleeping bodies.
+
 ---
 
 # Phase 26: Particles and Visual Effects Editor

@@ -164,8 +164,12 @@ public static class SceneSerializer
             EntityInputMovementComponent movement => new ComponentDocument("EntityInputMovement", Speed: movement.Speed),
             SpriteRenderer sprite => new ComponentDocument("SpriteRenderer", Size: ToVectorDocument(sprite.Size), Color: ToColorString(sprite.Color), OutlineColor: sprite.OutlineColor is { } outline ? ToColorString(outline) : null, SortingOrder: sprite.SortingOrder, Frame: ToFrameReference(sprite.Frame), PrimitiveType: sprite.PrimitiveType.ToString(), RenderLayer: sprite.RenderLayer.ToString(), Material: ToMaterialDocument(sprite.Material)),
             RigidBody2D body => new ComponentDocument("RigidBody2D", Velocity: ToVectorDocument(body.Velocity), GravityScale: body.GravityScale, IsKinematic: body.IsKinematic),
-            BoxCollider2D box => new ComponentDocument("BoxCollider2D", Size: ToVectorDocument(box.Size), Offset: ToVectorDocument(box.Offset), IsTrigger: box.IsTrigger),
-            TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger),
+            BoxCollider2D box => new ComponentDocument("BoxCollider2D", Size: ToVectorDocument(box.Size), Offset: ToVectorDocument(box.Offset), IsTrigger: box.IsTrigger, Radius: box.Layer),
+            CircleCollider2D circle => new ComponentDocument("CircleCollider2D", Radius: circle.Radius, Offset: ToVectorDocument(circle.Offset), IsTrigger: circle.IsTrigger),
+            CapsuleCollider2D capsule => new ComponentDocument("CapsuleCollider2D", Size: ToVectorDocument(capsule.Size), Offset: ToVectorDocument(capsule.Offset), IsTrigger: capsule.IsTrigger),
+            PolygonCollider2D polygon => new ComponentDocument("PolygonCollider2D", Offset: ToVectorDocument(polygon.Offset), IsTrigger: polygon.IsTrigger, Tiles: polygon.Points.Select(point => FormattableString.Invariant($"{point.X},{point.Y}")).ToArray()),
+            TilemapCollider2D collider => new ComponentDocument("TilemapCollider2D", Offset: ToVectorDocument(collider.Offset), IsTrigger: collider.IsTrigger, Radius: collider.Layer),
+            PhysicsJoint2D joint => new ComponentDocument("PhysicsJoint2D", Text: joint.JointType.ToString(), Position: ToVectorDocument(joint.Anchor), Velocity: ToVectorDocument(joint.ConnectedAnchor), Radius: joint.Distance, Speed: joint.Frequency, Intensity: joint.DampingRatio, MoveSpeed: joint.MotorSpeed, JumpSpeed: joint.MaxMotorForce),
             PlatformerMovementComponent platformer => new ComponentDocument("PlatformerMovement", MoveSpeed: platformer.MoveSpeed, JumpSpeed: platformer.JumpSpeed),
             AnimationPlayer animation => ToAnimationPlayerDocument(animation),
             Animator animator => ToAnimatorDocument(animator),
@@ -216,8 +220,12 @@ public static class SceneSerializer
             "EntityInputMovement" => new EntityInputMovementComponent(document.Speed ?? 0.0f),
             "SpriteRenderer" => CreateSpriteRenderer(document, assets),
             "RigidBody2D" => new RigidBody2D { Velocity = FromVectorDocument(document.Velocity), GravityScale = document.GravityScale ?? 1.0f, IsKinematic = document.IsKinematic ?? false },
-            "BoxCollider2D" => new BoxCollider2D(FromVectorDocument(document.Size)) { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
-            "TilemapCollider2D" => new TilemapCollider2D { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
+            "BoxCollider2D" => new BoxCollider2D(FromVectorDocument(document.Size)) { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false, Layer = (int)(document.Radius ?? 0) },
+            "CircleCollider2D" => new CircleCollider2D(document.Radius ?? 32.0f) { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
+            "CapsuleCollider2D" => new CapsuleCollider2D(FromVectorDocument(document.Size, new Vector2(48.0f, 96.0f))) { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false },
+            "PolygonCollider2D" => CreatePolygonCollider(document),
+            "TilemapCollider2D" => new TilemapCollider2D { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false, Layer = (int)(document.Radius ?? 0) },
+            "PhysicsJoint2D" => new PhysicsJoint2D { JointType = Enum.TryParse(document.Text, true, out PhysicsJoint2DType jointType) ? jointType : PhysicsJoint2DType.Distance, Anchor = FromVectorDocument(document.Position), ConnectedAnchor = FromVectorDocument(document.Velocity), Distance = document.Radius ?? 96.0f, Frequency = document.Speed ?? 4.0f, DampingRatio = document.Intensity ?? 0.5f, MotorSpeed = document.MoveSpeed ?? 0.0f, MaxMotorForce = document.JumpSpeed ?? 1000.0f },
             "PlatformerMovement" => new PlatformerMovementComponent(document.MoveSpeed ?? 0.0f, document.JumpSpeed ?? 0.0f),
             "AnimationPlayer" => CreateAnimationPlayer(document, assets),
             "Animator" => CreateAnimator(document, assets),
@@ -238,6 +246,19 @@ public static class SceneSerializer
         };
     }
 
+
+    private static PolygonCollider2D CreatePolygonCollider(ComponentDocument document)
+    {
+        PolygonCollider2D polygon = new() { Offset = FromVectorDocument(document.Offset), IsTrigger = document.IsTrigger ?? false };
+        polygon.Points.Clear();
+        foreach (string row in document.Tiles ?? [])
+        {
+            string[] parts = row.Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && float.TryParse(parts[0], out float x) && float.TryParse(parts[1], out float y)) polygon.Points.Add(new Vector2(x, y));
+        }
+        if (polygon.Points.Count == 0) polygon.Points.AddRange([new Vector2(-24, -24), new Vector2(24, -24), new Vector2(24, 24), new Vector2(-24, 24)]);
+        return polygon;
+    }
 
     private static PrefabInstanceComponent CreatePrefabInstance(ComponentDocument document)
     {

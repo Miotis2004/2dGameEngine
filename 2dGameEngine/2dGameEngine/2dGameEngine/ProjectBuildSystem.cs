@@ -58,6 +58,12 @@ public enum BuildDiagnosticSeverity
 
 public sealed record BuildArtifact(string Path, string Kind, long SizeInBytes, string Sha256);
 
+public sealed record BuildProfile(string Name, BuildConfiguration Configuration, bool Deterministic, bool DebugSymbols)
+{
+    public static BuildProfile Debug { get; } = new("Debug", BuildConfiguration.Debug, true, true);
+    public static BuildProfile Release { get; } = new("Release", BuildConfiguration.Release, true, false);
+}
+
 public sealed record BuildResult(bool Succeeded, string OutputDirectory, IReadOnlyList<BuildDiagnostic> Diagnostics, IReadOnlyList<BuildArtifact> Artifacts);
 
 public static class ProjectBuildSystem
@@ -117,6 +123,8 @@ public static class ProjectBuildSystem
             version = settings.Version,
             configuration = settings.Configuration.ToString(),
             targetPlatform = settings.TargetPlatform.ToString(),
+            deterministic = true,
+            msBuildProperties = CreateMSBuildProperties(settings),
             startupScene = $"Content/Scenes/{startupSceneName}",
             contentRoot = "Content",
             runnableFolderExport = settings.RunnableFolderExport,
@@ -130,13 +138,15 @@ public static class ProjectBuildSystem
             settings.Version,
             scenes = artifacts.Where(artifact => artifact.Kind == "Scene").Select(artifact => ToManifestEntry(outputDirectory, artifact)).ToArray(),
             assets = artifacts.Where(artifact => artifact.Kind == "Asset").Select(artifact => ToManifestEntry(outputDirectory, artifact)).ToArray(),
+            generatedAtUtc = DateTime.UnixEpoch,
         }, "Manifest", artifacts);
 
         string readmePath = Path.Combine(outputDirectory, "RUN_GAME.txt");
         File.WriteAllText(readmePath, $"{settings.ProductName} {settings.Version}{Environment.NewLine}Open this folder with the Unity 2 player runtime and load player-bootstrap.json.{Environment.NewLine}", Encoding.UTF8);
         artifacts.Add(CreateArtifact(readmePath, "RunnableFolderInstructions"));
 
-        diagnostics.Add(new BuildDiagnostic(BuildDiagnosticSeverity.Info, $"Built {artifacts.Count} artifact(s) for {settings.TargetPlatform}.", outputDirectory));
+        WriteTextArtifact(Path.Combine(outputDirectory, "Directory.Build.props"), CreateDirectoryBuildProps(settings), "MSBuildProperties", artifacts);
+        diagnostics.Add(new BuildDiagnostic(BuildDiagnosticSeverity.Info, $"Built deterministic {artifacts.Count} artifact(s) for {settings.TargetPlatform}.", outputDirectory));
         return new BuildResult(true, outputDirectory, diagnostics, artifacts.OrderBy(artifact => artifact.Path, StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
@@ -165,12 +175,49 @@ public static class ProjectBuildSystem
         artifacts.Add(CreateArtifact(path, kind));
     }
 
+    private static void WriteTextArtifact(string path, string contents, string kind, List<BuildArtifact> artifacts)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, contents, Encoding.UTF8);
+        artifacts.Add(CreateArtifact(path, kind));
+    }
+
     private static BuildArtifact CreateArtifact(string path, string kind)
     {
         using FileStream stream = File.OpenRead(path);
         byte[] hash = SHA256.HashData(stream);
         return new BuildArtifact(path, kind, new FileInfo(path).Length, Convert.ToHexString(hash).ToLowerInvariant());
     }
+
+    private static object CreateMSBuildProperties(BuildSettings settings) => new
+    {
+        Configuration = settings.Configuration.ToString(),
+        ContinuousIntegrationBuild = true,
+        Deterministic = true,
+        DebugType = settings.Configuration == BuildConfiguration.Debug ? "portable" : "none",
+        PublishTrimmed = settings.Configuration == BuildConfiguration.Release,
+        RuntimeIdentifier = GetRuntimeIdentifier(settings.TargetPlatform),
+    };
+
+    private static string CreateDirectoryBuildProps(BuildSettings settings) =>
+        $"""
+        <Project>
+          <PropertyGroup>
+            <Configuration>{settings.Configuration}</Configuration>
+            <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+            <Deterministic>true</Deterministic>
+            <DebugType>{(settings.Configuration == BuildConfiguration.Debug ? "portable" : "none")}</DebugType>
+            <PublishTrimmed>{(settings.Configuration == BuildConfiguration.Release).ToString().ToLowerInvariant()}</PublishTrimmed>
+            <RuntimeIdentifier>{GetRuntimeIdentifier(settings.TargetPlatform)}</RuntimeIdentifier>
+          </PropertyGroup>
+        </Project>
+        """;
+
+    private static string GetRuntimeIdentifier(BuildTargetPlatform targetPlatform) => targetPlatform switch
+    {
+        BuildTargetPlatform.WindowsDesktop => "win-x64",
+        _ => "win-x64",
+    };
 
     private static object ToManifestEntry(string outputDirectory, BuildArtifact artifact) => new
     {

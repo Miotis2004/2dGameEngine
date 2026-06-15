@@ -15,6 +15,7 @@ using _2dGameEngine.Performance;
 using _2dGameEngine.Physics;
 using _2dGameEngine.Serialization;
 using _2dGameEngine.Scripting;
+using _2dGameEngine.Testing;
 using _2dGameEngine.UI;
 
 namespace _2dGameEngine;
@@ -76,6 +77,7 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _checkScriptsButton;
     private readonly ToolStripButton _hotReloadButton;
     private readonly ToolStripButton _debugScriptsButton;
+    private readonly ToolStripButton _runTestsButton;
     private readonly PictureBox _assetPreviewBox;
     private readonly ListBox _tilePaletteList;
     private readonly ContextMenuStrip _sceneContextMenu;
@@ -260,6 +262,10 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _runTestsButton = new ToolStripButton("Run Tests")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addSpriteButton.Click += OnAddSpriteClicked;
         _addTilemapButton.Click += OnAddTilemapClicked;
         _addParticlesButton.Click += OnAddParticlesClicked;
@@ -278,6 +284,7 @@ public sealed class MainForm : Form
         _checkScriptsButton.Click += OnCheckScriptsClicked;
         _hotReloadButton.Click += OnHotReloadClicked;
         _debugScriptsButton.Click += OnDebugScriptsClicked;
+        _runTestsButton.Click += OnRunTestsClicked;
         toolStrip.Items.Add(new ToolStripLabel("Unity 2 Clone"));
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(newProjectButton);
@@ -304,6 +311,7 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_checkScriptsButton);
         toolStrip.Items.Add(_hotReloadButton);
         toolStrip.Items.Add(_debugScriptsButton);
+        toolStrip.Items.Add(_runTestsButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_importAssetButton);
         toolStrip.Items.Add(_refreshAssetsButton);
@@ -2121,6 +2129,31 @@ public sealed class MainForm : Form
         _statusStripLabel.Text = "Preparing C# hot reload...";
         ScriptToolingResult result = ScriptTooling.PrepareHotReload(_currentProject.SolutionPath, _scriptDebugSession);
         ReportScriptToolingResult("Hot reload", result);
+    }
+
+
+    private async void OnRunTestsClicked(object? sender, EventArgs e)
+    {
+        _runTestsButton.Enabled = false;
+        LogToConsole("Running dotnet test...");
+        try
+        {
+            string workingDirectory = _currentProject?.ProjectDirectory ?? AppContext.BaseDirectory;
+            EditorTestResult result = await EditorTestRunner.RunDotNetTestsAsync(workingDirectory);
+            foreach (string line in (result.Output + result.Error).Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries))
+            {
+                LogToConsole(line);
+            }
+            LogToConsole(result.Succeeded ? "Tests passed." : $"Tests failed with exit code {result.ExitCode}.");
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Test runner failed: {ex.Message}");
+        }
+        finally
+        {
+            _runTestsButton.Enabled = true;
+        }
     }
 
     private void OnDebugScriptsClicked(object? sender, EventArgs e)

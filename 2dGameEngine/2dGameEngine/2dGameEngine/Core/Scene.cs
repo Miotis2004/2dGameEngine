@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using _2dGameEngine.Input;
+using _2dGameEngine.ECS;
 using _2dGameEngine.Physics;
 
 namespace _2dGameEngine.Core;
@@ -11,6 +12,9 @@ namespace _2dGameEngine.Core;
 public sealed class Scene
 {
     private readonly List<Entity> _entities = [];
+    private readonly List<Entity> _entitiesToAdd = [];
+    private readonly List<Entity> _entitiesToRemove = [];
+    private bool _isUpdating;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Scene"/> class.
@@ -37,6 +41,10 @@ public sealed class Scene
     /// </summary>
     public PhysicsSystem Physics { get; } = new();
 
+    public EcsWorld EcsWorld { get; } = new();
+
+    public IList<IEcsSystem> Systems { get; } = new List<IEcsSystem> { new MovementSystem() };
+
     /// <summary>
     /// Adds an entity to the scene.
     /// </summary>
@@ -45,7 +53,16 @@ public sealed class Scene
     public Entity AddEntity(Entity entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        _entities.Add(entity);
+        _entitiesToRemove.Remove(entity);
+        if (_entities.Contains(entity) || _entitiesToAdd.Contains(entity)) return entity;
+        if (_isUpdating)
+        {
+            _entitiesToAdd.Add(entity);
+        }
+        else
+        {
+            _entities.Add(entity);
+        }
         return entity;
     }
 
@@ -68,10 +85,13 @@ public sealed class Scene
     public bool RemoveEntity(Entity entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        if (!_entities.Remove(entity))
+        bool existed = _entities.Remove(entity);
+        bool pending = _entitiesToAdd.Remove(entity);
+        if (!existed && !pending)
         {
             return false;
         }
+        _entitiesToRemove.Add(entity);
 
         if (entity.Parent is not null)
         {
@@ -83,8 +103,19 @@ public sealed class Scene
 
     internal void Update(Time time, InputState input)
     {
-        foreach (Entity entity in _entities.ToArray())
+        ApplyStructuralChanges();
+        _isUpdating = true;
+        EcsWorld.ApplyStructuralChanges();
+        float deltaSeconds = MathF.Min((float)time.DeltaTime.TotalSeconds, 0.05f);
+        for (int i = 0; i < Systems.Count; i++)
         {
+            Systems[i].Update(EcsWorld, deltaSeconds);
+        }
+
+        int entityCount = _entities.Count;
+        for (int i = 0; i < entityCount; i++)
+        {
+            Entity entity = _entities[i];
             if (entity.Parent is null)
             {
                 entity.Update(time, input);
@@ -92,5 +123,30 @@ public sealed class Scene
         }
 
         Physics.Step(this, time);
+        _isUpdating = false;
+        ApplyStructuralChanges();
+    }
+
+    internal void ApplyStructuralChanges()
+    {
+        if (_entitiesToRemove.Count > 0)
+        {
+            foreach (Entity entity in _entitiesToRemove)
+            {
+                _entities.Remove(entity);
+            }
+            _entitiesToRemove.Clear();
+        }
+
+        if (_entitiesToAdd.Count > 0)
+        {
+            _entities.AddRange(_entitiesToAdd);
+            _entitiesToAdd.Clear();
+        }
+
+        for (int i = 0; i < _entities.Count; i++)
+        {
+            _entities[i].ApplyStructuralChanges();
+        }
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using System.Numerics;
 using _2dGameEngine.Core;
 
@@ -14,6 +13,12 @@ public sealed class PhysicsSystem
 {
     private const float GroundNormalThreshold = -0.5f;
     private readonly List<PhysicsContact> _contacts = [];
+    private readonly List<Collider2D> _colliders = [];
+    private readonly List<Collider2D> _candidateColliders = [];
+    private readonly List<RigidBody2D> _dynamicBodies = [];
+    private readonly List<RectangleF> _debugBounds = [];
+    private readonly List<Entity> _sleepingBodies = [];
+    private readonly SpatialHashGrid _broadPhase = new();
     private int _stepIndex;
 
     /// <summary>
@@ -46,9 +51,12 @@ public sealed class PhysicsSystem
             return;
         }
 
-        List<Collider2D> colliders = [.. CollisionWorld.GetColliders(scene)];
-        foreach (RigidBody2D body in GetDynamicBodies(scene))
+        CollisionWorld.GetColliders(scene, _colliders);
+        GetDynamicBodies(scene, _dynamicBodies);
+        _broadPhase.Rebuild(_colliders);
+        for (int i = 0; i < _dynamicBodies.Count; i++)
         {
+            RigidBody2D body = _dynamicBodies[i];
             if (body.IsSleeping)
             {
                 continue;
@@ -60,30 +68,57 @@ public sealed class PhysicsSystem
             if (body.Constraints.HasFlag(RigidbodyConstraint2D.FreezePositionX)) movement.X = 0.0f;
             if (body.Constraints.HasFlag(RigidbodyConstraint2D.FreezePositionY)) movement.Y = 0.0f;
             body.Entity!.Transform.Value.Position += movement;
-            ResolveCollisions(body, colliders);
+            ResolveCollisions(body);
         }
 
-        LastDebugSnapshot = new PhysicsDebugSnapshot([.. _contacts], [.. colliders.Select(collider => collider.GetBounds())], [.. GetDynamicBodies(scene).Where(body => body.IsSleeping).Select(body => body.Entity!)], ++_stepIndex, deltaSeconds);
+        _debugBounds.Clear();
+        for (int i = 0; i < _colliders.Count; i++) _debugBounds.Add(_colliders[i].GetBounds());
+        _sleepingBodies.Clear();
+        for (int i = 0; i < _dynamicBodies.Count; i++)
+        {
+            if (_dynamicBodies[i].IsSleeping && _dynamicBodies[i].Entity is not null) _sleepingBodies.Add(_dynamicBodies[i].Entity!);
+        }
+        LastDebugSnapshot = new PhysicsDebugSnapshot([.. _contacts], [.. _debugBounds], [.. _sleepingBodies], ++_stepIndex, deltaSeconds);
     }
 
-    private static IEnumerable<RigidBody2D> GetDynamicBodies(Scene scene)
+    private static void GetDynamicBodies(Scene scene, List<RigidBody2D> results)
     {
-        return scene.Entities.Where(entity => entity.IsEnabled)
-            .SelectMany(entity => entity.Components.OfType<RigidBody2D>())
-            .Where(body => body.IsEnabled && !body.IsKinematic && body.Entity is not null);
+        results.Clear();
+        for (int i = 0; i < scene.Entities.Count; i++)
+        {
+            Entity entity = scene.Entities[i];
+            if (!entity.IsEnabled) continue;
+            for (int c = 0; c < entity.Components.Count; c++)
+            {
+                if (entity.Components[c] is RigidBody2D { IsEnabled: true, IsKinematic: false, Entity: not null } body)
+                {
+                    results.Add(body);
+                }
+            }
+        }
     }
 
-    private void ResolveCollisions(RigidBody2D body, IReadOnlyList<Collider2D> colliders)
+    private void ResolveCollisions(RigidBody2D body)
     {
         Entity entity = body.Entity!;
-        Collider2D? bodyCollider = entity.Components.OfType<Collider2D>().FirstOrDefault(collider => collider.IsEnabled && !collider.IsTrigger);
+        Collider2D? bodyCollider = null;
+        for (int i = 0; i < entity.Components.Count; i++)
+        {
+            if (entity.Components[i] is Collider2D { IsEnabled: true, IsTrigger: false } collider)
+            {
+                bodyCollider = collider;
+                break;
+            }
+        }
         if (bodyCollider is null)
         {
             return;
         }
 
-        foreach (Collider2D other in colliders)
+        _broadPhase.Query(bodyCollider.GetBounds(), _candidateColliders);
+        for (int i = 0; i < _candidateColliders.Count; i++)
         {
+            Collider2D other = _candidateColliders[i];
             if (ReferenceEquals(other, bodyCollider) || other.IsTrigger || other.Entity is null || !LayerMatrix.CanCollide(bodyCollider.Layer, other.Layer))
             {
                 continue;
@@ -107,7 +142,7 @@ public sealed class PhysicsSystem
 
     private void ResolveTilemapCollision(RigidBody2D body, Collider2D bodyCollider, TilemapCollider2D tilemapCollider)
     {
-        foreach (RectangleF tileBounds in tilemapCollider.GetSolidTileBounds(bodyCollider.GetBounds()).ToArray())
+        foreach (RectangleF tileBounds in tilemapCollider.GetSolidTileBounds(bodyCollider.GetBounds()))
         {
             ResolveBoundsCollision(body, bodyCollider.GetBounds(), tileBounds);
         }

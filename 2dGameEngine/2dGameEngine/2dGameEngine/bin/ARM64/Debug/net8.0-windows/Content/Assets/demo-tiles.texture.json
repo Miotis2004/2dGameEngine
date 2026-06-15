@@ -1,0 +1,10 @@
+{
+  "width": 96,
+  "height": 32,
+  "fill": "#00000000",
+  "regions": [
+    { "x": 0, "y": 0, "width": 32, "height": 32, "color": "#228B22" },
+    { "x": 32, "y": 0, "width": 32, "height": 32, "color": "#8B4513" },
+    { "x": 64, "y": 0, "width": 32, "height": 32, "color": "#FFA500" }
+  ]
+}

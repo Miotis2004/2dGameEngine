@@ -11,6 +11,7 @@ public sealed class Entity
 {
     private readonly List<Component> _components = [];
     private readonly List<Component> _componentsToAdd = [];
+    private readonly List<Component> _componentsToRemove = [];
     private readonly List<Entity> _children = [];
     private readonly List<Entity> _childrenToAdd = [];
     private readonly List<Entity> _childrenToRemove = [];
@@ -148,6 +149,30 @@ public sealed class Entity
     /// </summary>
     /// <typeparam name="TComponent">The component type.</typeparam>
     /// <returns>The matching component, or <see langword="null"/> when not found.</returns>
+        /// <summary>
+    /// Removes a component from this entity.
+    /// </summary>
+    /// <param name="component">The component to remove.</param>
+    /// <returns><see langword="true"/> when the component was present and removed.</returns>
+    public bool RemoveComponent(Component component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        bool existed = _components.Contains(component) && !_componentsToRemove.Contains(component);
+        bool pending = _componentsToAdd.Remove(component);
+        if (!existed && !pending)
+        {
+            return false;
+        }
+
+        if (existed)
+        {
+            _componentsToRemove.Add(component);
+        }
+
+        component.Detach();
+        return true;
+    }
+
     public TComponent? GetComponent<TComponent>()
         where TComponent : Component
     {
@@ -195,6 +220,15 @@ public sealed class Entity
 
     internal void ApplyStructuralChanges()
     {
+                if (_componentsToRemove.Count > 0)
+        {
+            foreach (Component comp in _componentsToRemove)
+            {
+                _components.Remove(comp);
+            }
+            _componentsToRemove.Clear();
+        }
+
         if (_componentsToAdd.Count > 0)
         {
             _components.AddRange(_componentsToAdd);

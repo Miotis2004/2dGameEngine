@@ -61,6 +61,7 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _importAssetButton;
     private readonly ToolStripButton _refreshAssetsButton;
     private readonly ToolStripButton _validateAssetsButton;
+    private readonly ToolStripButton _buildProjectButton;
     private readonly ToolStripDropDownButton _addComponentButton;
     private readonly ToolStripButton _newScriptButton;
     private readonly PictureBox _assetPreviewBox;
@@ -202,6 +203,10 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _buildProjectButton = new ToolStripButton("Build")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _addComponentButton = new ToolStripDropDownButton("Add Component")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -227,6 +232,7 @@ public sealed class MainForm : Form
         _importAssetButton.Click += OnImportAssetClicked;
         _refreshAssetsButton.Click += OnRefreshAssetsClicked;
         _validateAssetsButton.Click += OnValidateAssetsClicked;
+        _buildProjectButton.Click += OnBuildProjectClicked;
         _newScriptButton.Click += OnNewScriptClicked;
         toolStrip.Items.Add(new ToolStripLabel("Unity 2 Clone"));
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -254,6 +260,8 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_importAssetButton);
         toolStrip.Items.Add(_refreshAssetsButton);
         toolStrip.Items.Add(_validateAssetsButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_buildProjectButton);
 
         StatusStrip statusStrip = new();
         _statusStripLabel = new ToolStripStatusLabel("Runtime preview ready");
@@ -329,7 +337,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Phase 22 UI Canvas tools - add Canvas/Panel/Text/Button/Slider, edit rects with scene handles, Ctrl+Z/Y undo/redo",
+            Text = "Phase 23 build tools - configure Windows desktop builds, collect scenes/assets, and export runnable folders",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -501,6 +509,7 @@ public sealed class MainForm : Form
         _importAssetButton.Click -= OnImportAssetClicked;
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
+        _buildProjectButton.Click -= OnBuildProjectClicked;
         _newScriptButton.Click -= OnNewScriptClicked;
         _audioMixerList.SelectedIndexChanged -= OnAudioMixerSelectionChanged;
         _audioVolumeSlider.Scroll -= OnAudioVolumeSliderScrolled;
@@ -1744,6 +1753,54 @@ public sealed class MainForm : Form
 
         _projectAssetsTree.Nodes.Add(root);
         root.ExpandAll();
+    }
+
+
+    private void OnBuildProjectClicked(object? sender, EventArgs e)
+    {
+        if (_currentProject is null)
+        {
+            MessageBox.Show(this, "Create or load a project before building.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using BuildSettingsDialog dialog = new(_currentProject);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_engine.ActiveScene is not null)
+            {
+                string scenePath = Path.Combine(_currentProject.ScenesDirectory, $"{SanitizeFileName(_engine.ActiveScene.Name)}.scene.json");
+                SceneSerializer.Save(_engine.ActiveScene, scenePath);
+                LogToConsole($"Build saved current scene snapshot to {scenePath}");
+            }
+
+            BuildResult result = ProjectBuildSystem.Build(_currentProject, dialog.Settings);
+            foreach (BuildDiagnostic diagnostic in result.Diagnostics)
+            {
+                string location = string.IsNullOrWhiteSpace(diagnostic.Path) ? string.Empty : $" ({diagnostic.Path})";
+                LogToConsole($"Build {diagnostic.Severity}: {diagnostic.Message}{location}");
+            }
+
+            foreach (BuildArtifact artifact in result.Artifacts)
+            {
+                LogToConsole($"Build artifact: {artifact.Kind} {artifact.Path} [{artifact.SizeInBytes} bytes]");
+            }
+
+            PopulateProjectAssetsPane(_currentProject);
+            _statusStripLabel.Text = result.Succeeded ? $"Build complete: {result.OutputDirectory}" : "Build failed";
+            MessageBox.Show(this, result.Succeeded ? $"Build complete.\n\n{result.OutputDirectory}" : "Build failed. See console diagnostics.", "Project Build", MessageBoxButtons.OK, result.Succeeded ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        }
+        catch (Exception ex)
+        {
+            LogToConsole($"Build failed: {ex.Message}");
+            _statusStripLabel.Text = "Build failed";
+            MessageBox.Show(this, ex.Message, "Build Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void OnImportAssetClicked(object? sender, EventArgs e)

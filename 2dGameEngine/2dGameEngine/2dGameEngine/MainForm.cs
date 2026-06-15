@@ -38,6 +38,8 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _pauseButton;
     private readonly ToolStripButton _stopButton;
     private readonly ToolStripButton _stepButton;
+    private readonly ToolStripButton _undoButton;
+    private readonly ToolStripButton _redoButton;
     private readonly ToolStripStatusLabel _statusStripLabel;
     private readonly Panel _sceneEditorViewport;
     private readonly Panel _gameViewport;
@@ -61,7 +63,14 @@ public sealed class MainForm : Form
     private readonly ContextMenuStrip _hierarchyContextMenu;
     private Point _lastSceneContextPoint;
     private Entity? _selectedEntity;
+    private readonly List<Entity> _selectedEntities = [];
     private bool _isDraggingSelection;
+    private string? _dragUndoSnapshot;
+    private string? _lastSavedSceneSnapshot;
+    private readonly Stack<EditorSceneCommand> _undoStack = new();
+    private readonly Stack<EditorSceneCommand> _redoStack = new();
+    private bool _isRestoringEditorCommand;
+    private bool _isSyncingHierarchySelection;
     private bool _isTilePaintMode;
     private int _selectedTileId = 1;
     private Vector2 _dragOffset;
@@ -128,6 +137,14 @@ public sealed class MainForm : Form
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
         };
+        _undoButton = new ToolStripButton("Undo")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _redoButton = new ToolStripButton("Redo")
+        {
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
         _stepButton = new ToolStripButton("Step")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -136,6 +153,8 @@ public sealed class MainForm : Form
         _pauseButton.Click += OnPauseClicked;
         _stopButton.Click += OnStopClicked;
         _stepButton.Click += OnStepClicked;
+        _undoButton.Click += OnUndoClicked;
+        _redoButton.Click += OnRedoClicked;
         _addSpriteButton = new ToolStripButton("Add Sprite")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -212,6 +231,9 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_pauseButton);
         toolStrip.Items.Add(_stopButton);
         toolStrip.Items.Add(_stepButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_undoButton);
+        toolStrip.Items.Add(_redoButton);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_addSpriteButton);
         toolStrip.Items.Add(_addTilemapButton);
@@ -301,7 +323,7 @@ public sealed class MainForm : Form
             ForeColor = Color.White,
             Height = 42,
             Padding = new Padding(10, 6, 10, 4),
-            Text = "Unity-style 2D Scene Tools - C# scripts only; left click selects/drags, right click creates entities",
+            Text = "Phase 19 scene tools - Ctrl/Shift click multi-selects, drag moves groups, Ctrl+Z/Y undo/redo, Ctrl+D duplicates",
         };
         _sceneEditorViewport.Controls.Add(_viewportOverlayLabel);
 
@@ -407,6 +429,7 @@ public sealed class MainForm : Form
         Controls.Add(toolStrip);
 
         PopulateHierarchy(_editScene);
+        _lastSavedSceneSnapshot = CaptureSceneSnapshot();
         UpdatePlayModeControls();
         KeyDown += OnFormKeyDown;
         KeyUp += OnFormKeyUp;
@@ -435,6 +458,8 @@ public sealed class MainForm : Form
         _refreshAssetsButton.Click -= OnRefreshAssetsClicked;
         _validateAssetsButton.Click -= OnValidateAssetsClicked;
         _newScriptButton.Click -= OnNewScriptClicked;
+        _undoButton.Click -= OnUndoClicked;
+        _redoButton.Click -= OnRedoClicked;
         foreach (ToolStripItem item in _addComponentButton.DropDownItems)
         {
             item.Click -= OnAddComponentRecipeClicked;
@@ -900,24 +925,141 @@ public sealed class MainForm : Form
         return null;
     }
 
-    private void SelectEntity(Entity? entity)
+    private void SelectEntity(Entity? entity, bool additive = false)
     {
-        _selectedEntity = entity;
-        TreeNode? match = _hierarchyTree.Nodes.Count > 0 ? FindEntityNode(_hierarchyTree.Nodes[0], entity) : null;
+        if (!additive)
+        {
+            _selectedEntities.Clear();
+        }
+
+        if (entity is not null)
+        {
+            if (additive && _selectedEntities.Contains(entity))
+            {
+                _selectedEntities.Remove(entity);
+            }
+            else if (!_selectedEntities.Contains(entity))
+            {
+                _selectedEntities.Add(entity);
+            }
+        }
+
+        _selectedEntity = _selectedEntities.LastOrDefault();
+        TreeNode? match = _hierarchyTree.Nodes.Count > 0 ? FindEntityNode(_hierarchyTree.Nodes[0], _selectedEntity) : null;
         if (match is not null && !ReferenceEquals(_hierarchyTree.SelectedNode, match))
         {
-            _hierarchyTree.SelectedNode = match;
+            _isSyncingHierarchySelection = true;
+            try
+            {
+                _hierarchyTree.SelectedNode = match;
+            }
+            finally
+            {
+                _isSyncingHierarchySelection = false;
+            }
         }
         else
         {
-            ShowInspector(entity);
+            ShowInspector(_selectedEntities.Count > 1 ? _selectedEntities.ToArray() : _selectedEntity);
         }
 
-        _deleteButton.Enabled = !_isPlayMode && entity is not null;
-        _duplicateButton.Enabled = !_isPlayMode && entity is not null;
-        _addComponentButton.Enabled = !_isPlayMode && entity is not null;
-        _newScriptButton.Enabled = !_isPlayMode && entity is not null;
+        _deleteButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
+        _duplicateButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
+        _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _sceneEditorViewport.Invalidate();
+    }
+
+    private IEnumerable<Entity> ActiveSelection() => _selectedEntities.Count == 0 && _selectedEntity is not null ? [_selectedEntity] : _selectedEntities;
+
+    private string CaptureSceneSnapshot() => SceneSerializer.Serialize(_editScene);
+
+    private bool IsSceneDirty => _lastSavedSceneSnapshot is not null && CaptureSceneSnapshot() != _lastSavedSceneSnapshot;
+
+    private void PushSceneCommand(string name, string beforeSnapshot)
+    {
+        if (_isRestoringEditorCommand || _isPlayMode)
+        {
+            return;
+        }
+
+        string afterSnapshot = CaptureSceneSnapshot();
+        if (beforeSnapshot == afterSnapshot)
+        {
+            return;
+        }
+
+        _undoStack.Push(new EditorSceneCommand(name, beforeSnapshot, afterSnapshot));
+        _redoStack.Clear();
+        LogToConsole($"Recorded editor command: {name}.");
+        UpdatePlayModeControls();
+    }
+
+    private void RestoreSceneSnapshot(string snapshot)
+    {
+        string? selectedName = _selectedEntity?.Name;
+        _isRestoringEditorCommand = true;
+        try
+        {
+            _editScene = SceneSerializer.Deserialize(snapshot, _assets);
+            _engine.SetActiveScene(_editScene);
+            TryBindValidationSceneReferences(_editScene);
+            _selectedEntities.Clear();
+            Entity? restoredSelection = string.IsNullOrWhiteSpace(selectedName) ? null : _editScene.Entities.FirstOrDefault(entity => entity.Name == selectedName);
+            PopulateHierarchy(_editScene);
+            SelectEntity(restoredSelection);
+            _sceneEditorViewport.Invalidate();
+            _gameViewport.Invalidate();
+        }
+        finally
+        {
+            _isRestoringEditorCommand = false;
+        }
+    }
+
+    private void OnUndoClicked(object? sender, EventArgs e)
+    {
+        if (!EnsureEditMode() || _undoStack.Count == 0)
+        {
+            return;
+        }
+
+        EditorSceneCommand command = _undoStack.Pop();
+        _redoStack.Push(command);
+        RestoreSceneSnapshot(command.BeforeSnapshot);
+        LogToConsole($"Undo: {command.Name}.");
+        UpdatePlayModeControls();
+    }
+
+    private void OnRedoClicked(object? sender, EventArgs e)
+    {
+        if (!EnsureEditMode() || _redoStack.Count == 0)
+        {
+            return;
+        }
+
+        EditorSceneCommand command = _redoStack.Pop();
+        _undoStack.Push(command);
+        RestoreSceneSnapshot(command.AfterSnapshot);
+        LogToConsole($"Redo: {command.Name}.");
+        UpdatePlayModeControls();
+    }
+
+    private RectangleF GetSelectionBounds()
+    {
+        RectangleF bounds = GetEntityBounds(ActiveSelection().First());
+        foreach (Entity entity in ActiveSelection().Skip(1))
+        {
+            bounds = RectangleF.Union(bounds, GetEntityBounds(entity));
+        }
+
+        return bounds;
+    }
+
+    private Vector2 GetSelectionPivot()
+    {
+        RectangleF bounds = GetSelectionBounds();
+        return new Vector2(bounds.X + bounds.Width / 2.0f, bounds.Y + bounds.Height / 2.0f);
     }
 
     private void OnAddSpriteClicked(object? sender, EventArgs e)
@@ -951,6 +1093,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        string before = CaptureSceneSnapshot();
         string primitiveName = primitiveType == SpritePrimitiveType.Rectangle ? "Sprite Entity" : $"{primitiveType} Sprite";
         Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, primitiveName));
         entity.Transform.Value.Position = viewportPoint == Point.Empty ? _renderer.Camera.Position : ScreenToWorld(viewportPoint, _sceneEditorViewport.ClientSize);
@@ -965,6 +1108,7 @@ public sealed class MainForm : Form
         PopulateHierarchy(_editScene);
         UpdatePlayModeControls();
         SelectEntity(entity);
+        PushSceneCommand($"Add {primitiveType} sprite", before);
     }
 
     private static Color GetPrimitiveColor(SpritePrimitiveType primitiveType) => primitiveType switch
@@ -1009,6 +1153,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        string before = CaptureSceneSnapshot();
         Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Tilemap Level"));
         entity.Transform.Value.Position = viewportPoint == Point.Empty ? _renderer.Camera.Position - new Vector2(320.0f, 160.0f) : ScreenToWorld(viewportPoint, _sceneEditorViewport.ClientSize);
         Tilemap tilemap = entity.AddComponent(new Tilemap(20, 12, new Vector2(32.0f, 32.0f)) { SortingOrder = -5 });
@@ -1020,6 +1165,7 @@ public sealed class MainForm : Form
         _tilePaintButton.Checked = true;
         _isTilePaintMode = true;
         LogToConsole($"Added editable tilemap '{entity.Name}'.");
+        PushSceneCommand("Add tilemap", before);
     }
 
     private static void AddDefaultTileDefinitions(Tilemap tilemap)
@@ -1055,11 +1201,24 @@ public sealed class MainForm : Form
             return;
         }
 
-        Entity duplicate = DuplicateEntity(scene, _selectedEntity);
-        LogToConsole($"Duplicated '{_selectedEntity.Name}' as '{duplicate.Name}'.");
+        string before = CaptureSceneSnapshot();
+        List<Entity> duplicates = [];
+        foreach (Entity entity in ActiveSelection().ToArray())
+        {
+            Entity duplicate = DuplicateEntity(scene, entity);
+            duplicates.Add(duplicate);
+            LogToConsole($"Duplicated '{entity.Name}' as '{duplicate.Name}'.");
+        }
+
         PopulateHierarchy(_editScene);
         UpdatePlayModeControls();
-        SelectEntity(duplicate);
+        SelectEntity(null);
+        foreach (Entity duplicate in duplicates)
+        {
+            SelectEntity(duplicate, true);
+        }
+
+        PushSceneCommand("Duplicate selection", before);
     }
 
     private void OnDeleteClicked(object? sender, EventArgs e)
@@ -1075,15 +1234,22 @@ public sealed class MainForm : Form
             return;
         }
 
-        string name = _selectedEntity.Name;
-        scene.RemoveEntity(_selectedEntity);
+        string before = CaptureSceneSnapshot();
+        List<Entity> deleted = ActiveSelection().ToList();
+        foreach (Entity entity in deleted)
+        {
+            scene.RemoveEntity(entity);
+            LogToConsole($"Deleted entity '{entity.Name}'.");
+        }
+
         _selectedEntity = null;
+        _selectedEntities.Clear();
         _isDraggingSelection = false;
-        LogToConsole($"Deleted entity '{name}'.");
         PopulateHierarchy(_editScene);
         UpdatePlayModeControls();
         ShowInspector(scene);
         _sceneEditorViewport.Invalidate();
+        PushSceneCommand("Delete selection", before);
     }
 
     private void OnSaveSceneClicked(object? sender, EventArgs e)
@@ -1106,6 +1272,7 @@ public sealed class MainForm : Form
             SceneSerializer.Save(scene, scenePath);
             PopulateProjectAssetsPane(_currentProject);
             LogToConsole($"Saved scene to {scenePath}");
+            _lastSavedSceneSnapshot = CaptureSceneSnapshot();
             _statusStripLabel.Text = $"Scene saved: {scenePath}";
         }
         catch (Exception ex)
@@ -1148,6 +1315,9 @@ public sealed class MainForm : Form
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
             LogToConsole($"Loaded scene '{scene.Name}' from {dialog.FileName}");
+            _undoStack.Clear();
+            _redoStack.Clear();
+            _lastSavedSceneSnapshot = CaptureSceneSnapshot();
             _statusStripLabel.Text = $"Scene loaded: {dialog.FileName}";
         }
         catch (Exception ex)
@@ -1252,10 +1422,12 @@ public sealed class MainForm : Form
         }
 
         Component component = recipe.Factory();
+        string before = CaptureSceneSnapshot();
         _selectedEntity.AddComponent(component);
         LogToConsole($"Added {recipe.Name} to '{_selectedEntity.Name}'.");
         PopulateHierarchy(_engine.ActiveScene!);
         ShowInspector(component);
+        PushSceneCommand($"Add {recipe.Name} component", before);
     }
 
     private void OnNewScriptClicked(object? sender, EventArgs e)
@@ -1277,6 +1449,7 @@ public sealed class MainForm : Form
         }
 
         string gameSourceDirectory = Path.Combine(_currentProject.ProjectDirectory, "src", $"{_currentProject.SafeName}.Game");
+        string before = CaptureSceneSnapshot();
         AuthoredScriptComponent script = ComponentAuthoring.CreateScript(gameSourceDirectory, _currentProject.SafeName, $"{_selectedEntity.Name}Behavior");
         script.Properties["TargetEntity"] = _selectedEntity.Name;
         _selectedEntity.AddComponent(script);
@@ -1286,6 +1459,7 @@ public sealed class MainForm : Form
         LogToConsole("C# is the only supported scripting language; no visual scripting or alternate language assets were generated.");
         LogToConsole($"Created script '{script.ClassName}' and attached it to '{_selectedEntity.Name}'.");
         _statusStripLabel.Text = $"Script created: {script.ScriptPath}";
+        PushSceneCommand("Create C# script component", before);
     }
 
     private void OnNewProjectClicked(object? sender, EventArgs e)
@@ -1437,9 +1611,21 @@ public sealed class MainForm : Form
 
     private void OnHierarchySelectionChanged(object? sender, TreeViewEventArgs e)
     {
+        if (_isSyncingHierarchySelection)
+        {
+            ShowInspector(_selectedEntities.Count > 1 ? _selectedEntities.ToArray() : _selectedEntity);
+            return;
+        }
+
         _selectedEntity = e.Node?.Tag as Entity;
-        _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
-        _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _selectedEntities.Clear();
+        if (_selectedEntity is not null)
+        {
+            _selectedEntities.Add(_selectedEntity);
+        }
+
+        _deleteButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
+        _duplicateButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         _newScriptButton.Enabled = !_isPlayMode && _selectedEntity is not null;
         ShowInspector(e.Node?.Tag);
@@ -1458,6 +1644,13 @@ public sealed class MainForm : Form
                 _inspectorHeader.Text = scene.Name;
                 AddInspectorRow("Type", "Scene");
                 AddInspectorRow("Entities", scene.Entities.Count.ToString());
+                break;
+            case Entity[] entities:
+                _inspectorHeader.Text = $"{entities.Length} Entities";
+                AddInspectorRow("Type", "Multi-selection");
+                AddInspectorRow("Entities", string.Join(", ", entities.Select(entity => entity.Name)));
+                AddInspectorRow("Pivot", FormattableString.Invariant($"{GetSelectionPivot().X:0.##}, {GetSelectionPivot().Y:0.##}"));
+                AddInspectorRow("Tools", "Move / Rotate / Scale / Rect / Collider gizmos");
                 break;
             case Entity entity:
                 Vector2 position = entity.Transform.Value.Position;
@@ -1525,7 +1718,7 @@ public sealed class MainForm : Form
         {
             string genericState = _engine.IsRunning ? "Playing" : "Paused";
             _runtimeStatusLabel.Text = FormattableString.Invariant($"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {args.Scene?.Name ?? "<none>"}\nEntities: {args.Scene?.Entities.Count ?? 0}\nRuntime: {genericState}");
-            _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {genericState.ToLowerInvariant()}");
+            _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {genericState.ToLowerInvariant()}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
             return;
@@ -1547,7 +1740,7 @@ public sealed class MainForm : Form
 
         _runtimeStatusLabel.Text = FormattableString.Invariant(
             $"Frame: {args.Time.FrameCount}\nDelta: {args.Time.DeltaTime.TotalMilliseconds:0.00} ms\nScene: {sceneName}\nEntity: {_playerEntity.Name}\nObjective: {(_levelComplete ? "Complete" : "Reach the gold flag")}\nPosition: ({position.X:0.00}, {position.Y:0.00})\nVelocity: ({_playerBody.Velocity.X:0.00}, {_playerBody.Velocity.Y:0.00})\nGrounded: {_playerBody.IsGrounded}\nRuntime: {runtimeState}\nMouse: ({input.MousePosition.X}, {input.MousePosition.Y}) Δ({mouseDelta.X}, {mouseDelta.Y}) Wheel: {input.MouseWheelDelta}");
-        _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}");
+        _statusStripLabel.Text = FormattableString.Invariant($"{args.Scene?.Entities.Count ?? 0} entities | Frame {args.Time.FrameCount} | Preview {runtimeState.ToLowerInvariant()} | Goal {(_levelComplete ? "complete" : "active")}{(IsSceneDirty ? " | Unsaved" : string.Empty)}");
         _sceneEditorViewport.Invalidate();
         _gameViewport.Invalidate();
     }
@@ -1677,6 +1870,8 @@ public sealed class MainForm : Form
     private void UpdatePlayModeControls()
     {
         _playButton.Enabled = !_engine.IsRunning;
+        _undoButton.Enabled = !_isPlayMode && _undoStack.Count > 0;
+        _redoButton.Enabled = !_isPlayMode && _redoStack.Count > 0;
         _pauseButton.Enabled = _engine.IsRunning;
         _stopButton.Enabled = _isPlayMode || _engine.IsRunning;
         _stepButton.Enabled = !_engine.IsRunning;
@@ -1688,8 +1883,8 @@ public sealed class MainForm : Form
             _tilePaintButton.Checked = false;
             _isTilePaintMode = false;
         }
-        _duplicateButton.Enabled = !_isPlayMode && _selectedEntity is not null;
-        _deleteButton.Enabled = !_isPlayMode && _selectedEntity is not null;
+        _duplicateButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
+        _deleteButton.Enabled = !_isPlayMode && _selectedEntities.Count > 0;
         _saveSceneButton.Enabled = !_isPlayMode;
         _loadSceneButton.Enabled = !_isPlayMode;
         _addComponentButton.Enabled = !_isPlayMode && _selectedEntity is not null;
@@ -1710,6 +1905,34 @@ public sealed class MainForm : Form
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Control && e.KeyCode == Keys.Z)
+        {
+            OnUndoClicked(sender, e);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Control && e.KeyCode == Keys.Y)
+        {
+            OnRedoClicked(sender, e);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Control && e.KeyCode == Keys.D)
+        {
+            OnDuplicateClicked(sender, e);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.Delete)
+        {
+            OnDeleteClicked(sender, e);
+            e.Handled = true;
+            return;
+        }
+
         if (_isPlayMode && _gameViewport.Focused)
         {
             _engine.Input.SetKeyDown(e.KeyCode);
@@ -1743,10 +1966,12 @@ public sealed class MainForm : Form
             }
 
             Entity? hit = HitTestEntity(world);
-            SelectEntity(hit);
+            bool additiveSelection = (ModifierKeys & (Keys.Control | Keys.Shift)) != 0;
+            SelectEntity(hit, additiveSelection);
             if (e.Button == MouseButtons.Left && hit is not null)
             {
                 _isDraggingSelection = true;
+                _dragUndoSnapshot = CaptureSceneSnapshot();
                 _dragOffset = hit.Transform.Value.Position - world;
             }
             else if (e.Button == MouseButtons.Right)
@@ -1766,6 +1991,12 @@ public sealed class MainForm : Form
         }
         if (e.Button == MouseButtons.Left)
         {
+            if (_isDraggingSelection && _dragUndoSnapshot is not null)
+            {
+                PushSceneCommand("Move selection", _dragUndoSnapshot);
+                _dragUndoSnapshot = null;
+            }
+
             _isDraggingSelection = false;
         }
     }
@@ -1785,7 +2016,13 @@ public sealed class MainForm : Form
 
         if (sender == _sceneEditorViewport && !_isPlayMode && _isDraggingSelection && _selectedEntity is not null)
         {
-            _selectedEntity.Transform.Value.Position = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
+            Vector2 targetPosition = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
+            Vector2 delta = targetPosition - _selectedEntity.Transform.Value.Position;
+            foreach (Entity entity in ActiveSelection())
+            {
+                entity.Transform.Value.Position += delta;
+            }
+
             ShowInspector(_selectedEntity);
             _sceneEditorViewport.Invalidate();
             _gameViewport.Invalidate();
@@ -1818,7 +2055,15 @@ public sealed class MainForm : Form
             return;
         }
 
+        int previousTile = tilemap.GetTile(x, y);
+        if (previousTile == tileId)
+        {
+            return;
+        }
+
+        string before = CaptureSceneSnapshot();
         tilemap.SetTile(x, y, tileId);
+        PushSceneCommand(tileId == 0 ? "Erase tile" : "Paint tile", before);
         ShowInspector(tilemap);
         _statusStripLabel.Text = tileId == 0 ? $"Erased tile ({x}, {y})" : $"Painted tile {tileId} at ({x}, {y})";
         _sceneEditorViewport.Invalidate();
@@ -1871,21 +2116,26 @@ public sealed class MainForm : Form
 
     private void DrawSelectionOverlay(System.Drawing.Graphics graphics, Size viewportSize)
     {
-        if (_selectedEntity is null)
+        if (_selectedEntities.Count == 0)
         {
             return;
         }
 
-        RectangleF worldBounds = GetEntityBounds(_selectedEntity);
+        RectangleF worldBounds = GetSelectionBounds();
         PointF screenPosition = _renderer.Camera.WorldToScreen(new Vector2(worldBounds.X, worldBounds.Y), viewportSize);
         float zoom = MathF.Max(0.01f, _renderer.Camera.Zoom);
         RectangleF screenBounds = new(screenPosition.X, screenPosition.Y, worldBounds.Width * zoom, worldBounds.Height * zoom);
         using Pen selectionPen = new(Color.DeepSkyBlue, 2.0f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
         graphics.DrawRectangle(selectionPen, screenBounds.X, screenBounds.Y, screenBounds.Width, screenBounds.Height);
 
-        PointF center = _renderer.Camera.WorldToScreen(_selectedEntity.Transform.Value.Position, viewportSize);
+        PointF center = _renderer.Camera.WorldToScreen(GetSelectionPivot(), viewportSize);
         using SolidBrush brush = new(Color.DeepSkyBlue);
         graphics.FillEllipse(brush, center.X - 4.0f, center.Y - 4.0f, 8.0f, 8.0f);
+        using Pen xAxis = new(Color.OrangeRed, 2.0f);
+        using Pen yAxis = new(Color.LimeGreen, 2.0f);
+        graphics.DrawLine(xAxis, center.X, center.Y, center.X + 42.0f, center.Y);
+        graphics.DrawLine(yAxis, center.X, center.Y, center.X, center.Y - 42.0f);
+        graphics.DrawString($"{_selectedEntities.Count} selected | Move gizmo | Global | Snap 16px", Font, brush, center.X + 8.0f, center.Y + 8.0f);
     }
 
 
@@ -1912,6 +2162,8 @@ public sealed class MainForm : Form
             graphics.DrawLine(gridPen, left.X, left.Y, left.X + bounds.Width * zoom, left.Y);
         }
     }
+
+    private sealed record EditorSceneCommand(string Name, string BeforeSnapshot, string AfterSnapshot);
 
     private sealed record TilePaletteItem(int TileId, string Name)
     {

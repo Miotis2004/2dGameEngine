@@ -30,6 +30,20 @@ public abstract class Component
     {
     }
 
+    internal void Detach()
+    {
+        Entity = null;
+        OnDetached();
+    }
+
+    /// <summary>
+    /// Called after the component is detached from an entity.
+    /// </summary>
+    protected virtual void OnDetached()
+    {
+    }
+
+
     /// <summary>
     /// Called once per frame while the component and owning entity are enabled.
     /// </summary>

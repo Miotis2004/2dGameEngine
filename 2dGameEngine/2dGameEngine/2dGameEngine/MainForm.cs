@@ -34,7 +34,7 @@ public sealed class MainForm : Form
     private bool _levelComplete;
     private readonly Renderer2D _renderer;
     private readonly TreeView _hierarchyTree;
-    private readonly ListView _inspectorList;
+    private readonly PropertyGrid _inspectorGrid;
     private readonly Label _inspectorHeader;
     private readonly Label _runtimeStatusLabel;
     private readonly Label _viewportOverlayLabel;
@@ -44,6 +44,7 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _stepButton;
     private readonly ToolStripButton _undoButton;
     private readonly ToolStripButton _redoButton;
+    private readonly ToolStripButton _snapToGridButton;
     private readonly ToolStripStatusLabel _statusStripLabel;
     private readonly Panel _sceneEditorViewport;
     private readonly Panel _gameViewport;
@@ -95,6 +96,8 @@ public sealed class MainForm : Form
     private bool _isTilePaintMode;
     private int _selectedTileId = 1;
     private Vector2 _dragOffset;
+    private GizmoAxis _activeGizmoAxis = GizmoAxis.None;
+    private bool _isDraggingGizmo;
     private readonly HashSet<Panel> _dockPanels = new();
     private readonly Dictionary<Control, DockPanelSlot> _dockSlotsByHost = new();
     private Panel? _draggedDockPanel;
@@ -178,6 +181,12 @@ public sealed class MainForm : Form
         _stepButton.Click += OnStepClicked;
         _undoButton.Click += OnUndoClicked;
         _redoButton.Click += OnRedoClicked;
+        _snapToGridButton = new ToolStripButton("Snap: 16px")
+        {
+            CheckOnClick = true,
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+        };
+        _snapToGridButton.CheckedChanged += (s, e) => { _sceneEditorViewport?.Invalidate(); };
         _addSpriteButton = new ToolStripButton("Add Sprite")
         {
             DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -298,6 +307,8 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(_undoButton);
         toolStrip.Items.Add(_redoButton);
         toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(_snapToGridButton);
+        toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(_addSpriteButton);
         toolStrip.Items.Add(_addTilemapButton);
         toolStrip.Items.Add(_addParticlesButton);
@@ -345,16 +356,12 @@ public sealed class MainForm : Form
             Padding = new Padding(8, 10, 8, 0),
             Text = "Inspector",
         };
-        _inspectorList = new ListView
+        _inspectorGrid = new PropertyGrid
         {
             Dock = DockStyle.Fill,
-            FullRowSelect = true,
-            GridLines = true,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            View = View.Details,
+            PropertySort = PropertySort.CategorizedAlphabetical,
         };
-        _inspectorList.Columns.Add("Property", 130);
-        _inspectorList.Columns.Add("Value", 220);
+        _inspectorGrid.PropertyValueChanged += OnInspectorPropertyValueChanged;
 
         _runtimeStatusLabel = new Label
         {
@@ -368,7 +375,10 @@ public sealed class MainForm : Form
         {
             BackColor = Color.FromArgb(24, 28, 36),
             Dock = DockStyle.Fill,
+            AllowDrop = true,
         };
+        _sceneEditorViewport.DragEnter += OnViewportDragEnter;
+        _sceneEditorViewport.DragDrop += OnViewportDragDrop;
         _sceneEditorViewport.Paint += OnSceneEditorPaint;
         _sceneEditorViewport.MouseDown += OnViewportMouseDown;
         _sceneEditorViewport.MouseUp += OnViewportMouseUp;
@@ -405,6 +415,7 @@ public sealed class MainForm : Form
             HideSelection = false,
         };
         _projectAssetsTree.AfterSelect += OnProjectAssetSelectionChanged;
+        _projectAssetsTree.ItemDrag += OnProjectAssetItemDrag;
         _assetPreviewBox = new PictureBox
         {
             BackColor = Color.FromArgb(20, 24, 32),
@@ -859,6 +870,14 @@ public sealed class MainForm : Form
     }
 
 
+        private enum GizmoAxis
+    {
+        None,
+        X,
+        Y,
+        Center
+    }
+
     private sealed class DockPanelSlot
     {
         public DockPanelSlot(Control host, Panel panel)
@@ -885,7 +904,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
         };
-        panel.Controls.Add(_inspectorList);
+        panel.Controls.Add(_inspectorGrid);
         panel.Controls.Add(_inspectorHeader);
         return CreateDockPanel("Inspector", panel);
     }
@@ -1098,6 +1117,7 @@ public sealed class MainForm : Form
     private ContextMenuStrip CreateSceneContextMenu()
     {
         ContextMenuStrip menu = new();
+        menu.Items.Add(CreateMenuItem("Create Empty Entity", (_, _) => AddEmptyEntity((Point?)_lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, _lastSceneContextPoint)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, _lastSceneContextPoint)));
@@ -1120,7 +1140,21 @@ public sealed class MainForm : Form
             {
                 _hierarchyTree.SelectedNode = node;
             }
+
+            bool isComponent = node?.Tag is Component;
+            foreach (ToolStripItem item in menu.Items)
+            {
+                if (item.Text == "Remove Component")
+                {
+                    item.Visible = isComponent;
+                }
+                else
+                {
+                    item.Visible = !isComponent;
+                }
+            }
         };
+        menu.Items.Add(CreateMenuItem("Create Empty Entity", (_, _) => AddEmptyEntity(null)));
         menu.Items.Add(CreateMenuItem("Add Rectangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Rectangle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Circle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Circle, Point.Empty)));
         menu.Items.Add(CreateMenuItem("Add Triangle Sprite", (_, _) => AddPrimitiveSprite(SpritePrimitiveType.Triangle, Point.Empty)));
@@ -1129,6 +1163,7 @@ public sealed class MainForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateMenuItem("Duplicate", OnDuplicateClicked));
         menu.Items.Add(CreateMenuItem("Delete", OnDeleteClicked));
+        menu.Items.Add(CreateMenuItem("Remove Component", OnRemoveComponentClicked));
         return menu;
     }
 
@@ -1502,7 +1537,32 @@ public sealed class MainForm : Form
 
 
 
-    private void AddPrimitiveSprite(SpritePrimitiveType primitiveType, Point viewportPoint)
+        private void AddEmptyEntity(Point? viewportPoint)
+    {
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+
+        Scene? scene = _engine.ActiveScene;
+        if (scene is null)
+        {
+            return;
+        }
+
+        string before = CaptureSceneSnapshot();
+        Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, "Entity"));
+        entity.Transform.Value.Position = viewportPoint is null ? _renderer.Camera.Position : ScreenToWorld(viewportPoint.Value, _sceneEditorViewport.ClientSize);
+
+        LogToConsole($"Added empty entity '{entity.Name}'.");
+        PopulateHierarchy(_editScene);
+        PopulateEffectsEditor();
+        UpdatePlayModeControls();
+        SelectEntity(entity);
+        PushSceneCommand("Add empty entity", before);
+    }
+
+private void AddPrimitiveSprite(SpritePrimitiveType primitiveType, Point viewportPoint)
     {
         if (!EnsureEditMode())
         {
@@ -1708,7 +1768,20 @@ public sealed class MainForm : Form
         PushSceneCommand("Duplicate selection", before);
     }
 
-    private void OnDeleteClicked(object? sender, EventArgs e)
+        private void OnRemoveComponentClicked(object? sender, EventArgs e)
+    {
+        if (!EnsureEditMode()) return;
+        if (_hierarchyTree.SelectedNode?.Tag is Component component && component.Entity is not null)
+        {
+            string before = CaptureSceneSnapshot();
+            component.Entity.RemoveComponent(component);
+            LogToConsole($"Removed component {component.GetType().Name} from '{component.Entity.Name}'.");
+            PopulateHierarchy(_editScene);
+            ShowInspector(component.Entity);
+            PushSceneCommand("Remove component", before);
+        }
+    }
+private void OnDeleteClicked(object? sender, EventArgs e)
     {
         if (!EnsureEditMode())
         {
@@ -2343,7 +2416,15 @@ public sealed class MainForm : Form
         PopulateProjectAssetsPane(_currentProject);
     }
 
-    private void OnProjectAssetSelectionChanged(object? sender, TreeViewEventArgs e)
+
+    private void OnProjectAssetItemDrag(object? sender, ItemDragEventArgs e)
+    {
+        if (e.Item is TreeNode node && node.Tag is AssetMetadata)
+        {
+            DoDragDrop(node, DragDropEffects.Copy);
+        }
+    }
+private void OnProjectAssetSelectionChanged(object? sender, TreeViewEventArgs e)
     {
         if (e.Node?.Tag is EditorPackageInfo package)
         {
@@ -2403,174 +2484,121 @@ public sealed class MainForm : Form
         _sceneEditorViewport.Invalidate();
     }
 
-    private void ShowInspector(object? selected)
+        private void ShowInspector(object? selected)
     {
-        _inspectorList.Items.Clear();
+        _inspectorGrid.SelectedObject = null;
 
         switch (selected)
         {
             case Scene scene:
                 _inspectorHeader.Text = scene.Name;
-                AddInspectorRow("Type", "Scene");
-                AddInspectorRow("Entities", scene.Entities.Count.ToString());
+                _inspectorGrid.SelectedObject = scene;
                 break;
             case Entity[] entities:
                 _inspectorHeader.Text = $"{entities.Length} Entities";
-                AddInspectorRow("Type", "Multi-selection");
-                AddInspectorRow("Entities", string.Join(", ", entities.Select(entity => entity.Name)));
-                AddInspectorRow("Pivot", FormattableString.Invariant($"{GetSelectionPivot().X:0.##}, {GetSelectionPivot().Y:0.##}"));
-                AddInspectorRow("Tools", "Move / Rotate / Scale / Rect / Collider gizmos");
+                _inspectorGrid.SelectedObjects = entities;
                 break;
             case Entity entity:
-                Vector2 position = entity.Transform.Value.Position;
-                Vector2 scale = entity.Transform.Value.Scale;
                 _inspectorHeader.Text = entity.Name;
-                AddInspectorRow("Type", "Entity");
-                AddInspectorRow("Enabled", entity.IsEnabled.ToString());
-                AddInspectorRow("Position", FormattableString.Invariant($"{position.X:0.##}, {position.Y:0.##}"));
-                AddInspectorRow("Rotation", FormattableString.Invariant($"{entity.Transform.Value.Rotation:0.###} rad"));
-                AddInspectorRow("Scale", FormattableString.Invariant($"{scale.X:0.##}, {scale.Y:0.##}"));
-                AddInspectorRow("Components", entity.Components.Count.ToString());
+                _inspectorGrid.SelectedObject = new EntityWrapper(entity);
                 break;
             case EditorPackageInfo package:
                 _inspectorHeader.Text = package.Manifest.DisplayName;
-                AddInspectorRow("Type", "Package");
-                AddInspectorRow("Id", package.Manifest.Id);
-                AddInspectorRow("Version", package.Manifest.Version);
-                AddInspectorRow("Path", package.PackageDirectory);
-                AddInspectorRow("Extensions", string.Join(", ", package.Manifest.ExtensionIds));
+                _inspectorGrid.SelectedObject = package;
                 break;
             case EditorExtensionInfo extension:
                 _inspectorHeader.Text = extension.Manifest.DisplayName;
-                AddInspectorRow("Type", "Editor Extension");
-                AddInspectorRow("Id", extension.Manifest.Id);
-                AddInspectorRow("Enabled", extension.Enabled.ToString());
-                AddInspectorRow("Entry Point", extension.Manifest.EntryPoint);
-                AddInspectorRow("Menus", string.Join(", ", extension.Manifest.Menus));
+                _inspectorGrid.SelectedObject = extension;
                 break;
             case AssetMetadata asset:
                 _inspectorHeader.Text = Path.GetFileName(asset.RelativePath);
-                AddInspectorRow("Type", $"Asset ({asset.Kind})");
-                AddInspectorRow("Path", asset.RelativePath);
-                AddInspectorRow("Metadata", asset.RelativePath + AssetMetadata.MetadataExtension);
-                AddInspectorRow("Imported", asset.ImportedAtUtc.ToLocalTime().ToString("g"));
-                if (asset.Width is not null && asset.Height is not null)
-                {
-                    AddInspectorRow("Size", $"{asset.Width} x {asset.Height}");
-                    AddInspectorRow("Slice", $"{asset.SliceWidth} x {asset.SliceHeight}");
-                }
-
-                break;
-            case AudioSourceComponent audioSource:
-                _inspectorHeader.Text = "Audio Source";
-                AddInspectorRow("Type", "AudioSource");
-                AddInspectorRow("Clip", audioSource.Clip?.Name ?? "<none>");
-                AddInspectorRow("Mixer Group", audioSource.MixerGroup);
-                AddInspectorRow("Volume", $"{audioSource.Volume:P0}");
-                AddInspectorRow("Play On Start", audioSource.PlayOnStart.ToString());
-                AddInspectorRow("Loop", audioSource.Loop.ToString());
-                AddInspectorRow("Playing", audioSource.IsPlaying.ToString());
-                break;
-            case AuthoredScriptComponent script:
-                _inspectorHeader.Text = script.ClassName;
-                AddInspectorRow("Type", "C# MonoBehaviour Script");
-                AddInspectorRow("Language", "C# only");
-                AddInspectorRow("Enabled", script.IsEnabled.ToString());
-                AddInspectorRow("Entity", script.Entity?.Name ?? "<detached>");
-                AddInspectorRow("Source", script.ScriptPath);
-                AddInspectorRow("Properties", script.Properties.Count.ToString());
-                break;
-            case CanvasComponent canvas:
-                _inspectorHeader.Text = "Canvas";
-                AddInspectorRow("Type", "UI Canvas");
-                AddInspectorRow("Render Mode", canvas.RenderMode.ToString());
-                AddInspectorRow("Reference Resolution", $"{canvas.ReferenceResolution.Width} x {canvas.ReferenceResolution.Height}");
-                AddInspectorRow("Sorting Order", canvas.SortingOrder.ToString());
-                break;
-            case RectTransformComponent rect:
-                _inspectorHeader.Text = "Rect Transform";
-                AddInspectorRow("Anchor", rect.Anchor.ToString());
-                AddInspectorRow("Position", FormattableString.Invariant($"{rect.AnchoredPosition.X:0.##}, {rect.AnchoredPosition.Y:0.##}"));
-                AddInspectorRow("Size", FormattableString.Invariant($"{rect.Size.X:0.##}, {rect.Size.Y:0.##}"));
-                AddInspectorRow("Pivot", FormattableString.Invariant($"{rect.Pivot.X:0.##}, {rect.Pivot.Y:0.##}"));
-                break;
-            case UITextComponent text:
-                _inspectorHeader.Text = "UI Text";
-                AddInspectorRow("Text", text.Text);
-                AddInspectorRow("Font", $"{text.FontFamily} {text.FontSize:0.#}");
-                break;
-            case UIButtonComponent button:
-                _inspectorHeader.Text = "UI Button";
-                AddInspectorRow("Label", button.Label);
-                AddInspectorRow("Action", button.ActionName ?? "<none>");
-                break;
-            case UISliderComponent slider:
-                _inspectorHeader.Text = "UI Slider";
-                AddInspectorRow("Value", slider.Value.ToString("0.##"));
-                AddInspectorRow("Range", $"{slider.MinValue:0.##} - {slider.MaxValue:0.##}");
-                break;
-            case Tilemap tilemap:
-                _inspectorHeader.Text = "Tilemap";
-                AddInspectorRow("Type", "Tilemap");
-                AddInspectorRow("Enabled", tilemap.IsEnabled.ToString());
-                AddInspectorRow("Size", $"{tilemap.Width} x {tilemap.Height}");
-                AddInspectorRow("Tile Size", FormattableString.Invariant($"{tilemap.TileSize.X:0.##}, {tilemap.TileSize.Y:0.##}"));
-                AddInspectorRow("Definitions", tilemap.Definitions.Count.ToString());
-                AddInspectorRow("Sorting Order", tilemap.SortingOrder.ToString());
-                break;
-            case ParticleSystem2D particles:
-                _inspectorHeader.Text = "Particle System 2D";
-                AddInspectorRow("Type", "Particle System 2D");
-                AddInspectorRow("Live Particles", particles.Particles.Count.ToString());
-                AddInspectorRow("Emission Rate", particles.EmissionRate.ToString("0.#/s"));
-                AddInspectorRow("Max Particles", particles.MaxParticles.ToString());
-                AddInspectorRow("Lifetime", particles.Lifetime.ToString("0.##s"));
-                AddInspectorRow("Speed", particles.StartSpeed.ToString("0.#"));
-                AddInspectorRow("Size", $"{particles.StartSize:0.#} -> {particles.EndSize:0.#}");
-                AddInspectorRow("Spread", particles.SpreadAngle.ToString("0.#°"));
-                AddInspectorRow("Sorting Order", particles.SortingOrder.ToString());
-                break;
-            case RigidBody2D body:
-                _inspectorHeader.Text = "RigidBody 2D";
-                AddInspectorRow("Velocity", FormattableString.Invariant($"{body.Velocity.X:0.##}, {body.Velocity.Y:0.##}"));
-                AddInspectorRow("Gravity Scale", body.GravityScale.ToString("0.##"));
-                AddInspectorRow("Kinematic", body.IsKinematic.ToString());
-                AddInspectorRow("Constraints", body.Constraints.ToString());
-                AddInspectorRow("Sleeping", body.IsSleeping.ToString());
-                break;
-            case Collider2D collider:
-                _inspectorHeader.Text = collider.GetType().Name;
-                AddInspectorRow("Trigger", collider.IsTrigger.ToString());
-                AddInspectorRow("Layer", collider.Layer.ToString());
-                AddInspectorRow("Material", $"{collider.Material.Name} F:{collider.Material.Friction:0.##} B:{collider.Material.Bounciness:0.##} D:{collider.Material.Density:0.##}");
-                AddInspectorRow("Bounds", collider.GetBounds().ToString());
-                break;
-            case PhysicsJoint2D joint:
-                _inspectorHeader.Text = "Physics Joint 2D";
-                AddInspectorRow("Type", joint.JointType.ToString());
-                AddInspectorRow("Distance", joint.Distance.ToString("0.##"));
-                AddInspectorRow("Frequency", joint.Frequency.ToString("0.##"));
-                AddInspectorRow("Motor", $"{joint.MotorSpeed:0.##} / {joint.MaxMotorForce:0.##}");
+                _inspectorGrid.SelectedObject = asset;
                 break;
             case Component component:
                 _inspectorHeader.Text = component.GetType().Name;
-                AddInspectorRow("Type", component.GetType().Name);
-                AddInspectorRow("Enabled", component.IsEnabled.ToString());
-                AddInspectorRow("Entity", component.Entity?.Name ?? "<detached>");
+                _inspectorGrid.SelectedObject = component;
                 break;
             default:
                 _inspectorHeader.Text = "Inspector";
-                AddInspectorRow("Selection", "None");
                 break;
         }
     }
 
-    private void AddInspectorRow(string name, string value)
+    private void OnInspectorPropertyValueChanged(object? s, PropertyValueChangedEventArgs e)
     {
-        _inspectorList.Items.Add(new ListViewItem(new[] { name, value }));
+        if (!EnsureEditMode())
+        {
+            return;
+        }
+        _sceneEditorViewport.Invalidate();
+        _gameViewport.Invalidate();
     }
 
-    private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
+    private class EntityWrapper : System.ComponentModel.INotifyPropertyChanged
+    {
+        private readonly Entity _entity;
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        public EntityWrapper(Entity entity)
+        {
+            _entity = entity;
+            _entity.Transform.Value.PropertyChanged += (s, e) => PropertyChanged?.Invoke(this, e);
+        }
+
+        [System.ComponentModel.Category("Entity")]
+        public string Name
+        {
+            get => _entity.Name;
+            set
+            {
+                if (_entity.Name != value)
+                {
+                    _entity.Name = value;
+                    PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Name)));
+                }
+            }
+        }
+
+        [System.ComponentModel.Category("Entity")]
+        public bool IsEnabled
+        {
+            get => _entity.IsEnabled;
+            set
+            {
+                if (_entity.IsEnabled != value)
+                {
+                    _entity.IsEnabled = value;
+                    PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsEnabled)));
+                }
+            }
+        }
+
+        [System.ComponentModel.Category("Transform")]
+        [System.ComponentModel.TypeConverter(typeof(Vector2Converter))]
+        public Vector2 Position
+        {
+            get => _entity.Transform.Value.Position;
+            set => _entity.Transform.Value.Position = value;
+        }
+
+        [System.ComponentModel.Category("Transform")]
+        public float Rotation
+        {
+            get => _entity.Transform.Value.Rotation;
+            set => _entity.Transform.Value.Rotation = value;
+        }
+
+        [System.ComponentModel.Category("Transform")]
+        [System.ComponentModel.TypeConverter(typeof(Vector2Converter))]
+        public Vector2 Scale
+        {
+            get => _entity.Transform.Value.Scale;
+            set => _entity.Transform.Value.Scale = value;
+        }
+    }
+
+private void OnEngineUpdated(object? sender, EngineUpdatedEventArgs args)
     {
         if (args.Scene is null || !args.Scene.Entities.Contains(_playerEntity))
         {
@@ -2814,7 +2842,63 @@ public sealed class MainForm : Form
         }
     }
 
-    private void OnViewportMouseDown(object? sender, MouseEventArgs e)
+
+    private void OnViewportDragEnter(object? sender, DragEventArgs e)
+    {
+        if (!EnsureEditMode()) return;
+        if (e.Data is not null && e.Data.GetDataPresent(typeof(TreeNode)))
+        {
+            TreeNode node = (TreeNode)e.Data.GetData(typeof(TreeNode))!;
+            if (node.Tag is AssetMetadata asset && asset.Kind == AssetKind.Texture)
+            {
+                e.Effect = DragDropEffects.Copy;
+                return;
+            }
+        }
+        e.Effect = DragDropEffects.None;
+    }
+
+    private void OnViewportDragDrop(object? sender, DragEventArgs e)
+    {
+        if (!EnsureEditMode()) return;
+        if (e.Data is not null && e.Data.GetDataPresent(typeof(TreeNode)))
+        {
+            TreeNode node = (TreeNode)e.Data.GetData(typeof(TreeNode))!;
+            if (node.Tag is AssetMetadata asset && asset.Kind == AssetKind.Texture)
+            {
+                Point clientPoint = _sceneEditorViewport.PointToClient(new Point(e.X, e.Y));
+                Vector2 worldPosition = ScreenToWorld(clientPoint, _sceneEditorViewport.ClientSize);
+                if (_snapToGridButton.Checked)
+                {
+                    worldPosition.X = MathF.Round(worldPosition.X / 16.0f) * 16.0f;
+                    worldPosition.Y = MathF.Round(worldPosition.Y / 16.0f) * 16.0f;
+                }
+
+                Scene? scene = _engine.ActiveScene;
+                if (scene is null) return;
+
+                string before = CaptureSceneSnapshot();
+                Entity entity = scene.CreateEntity(GetUniqueEntityName(scene, Path.GetFileNameWithoutExtension(asset.RelativePath)));
+                entity.Transform.Value.Position = worldPosition;
+
+                Vector2 size = new Vector2(asset.Width ?? 64.0f, asset.Height ?? 64.0f);
+
+                entity.AddComponent(new SpriteRenderer(size, Color.White)
+                {
+                    Frame = new _2dGameEngine.Content.SpriteFrame("dragged", _assets.LoadTexture(asset.RelativePath), new Rectangle(0, 0, (int)size.X, (int)size.Y)),
+                    SortingOrder = 5
+                });
+
+                LogToConsole($"Added sprite entity '{entity.Name}' from dragged texture.");
+                PopulateHierarchy(_editScene);
+                PopulateEffectsEditor();
+                UpdatePlayModeControls();
+                SelectEntity(entity);
+                PushSceneCommand("Drop texture as sprite", before);
+            }
+        }
+    }
+private void OnViewportMouseDown(object? sender, MouseEventArgs e)
     {
         ((Control?)sender)?.Focus();
         if (sender == _gameViewport && _isPlayMode)
@@ -2832,7 +2916,23 @@ public sealed class MainForm : Form
                 return;
             }
 
+
+            if (_selectedEntities.Count > 0)
+            {
+                PointF gizmoCenter = _renderer.Camera.WorldToScreen(GetSelectionPivot(), _sceneEditorViewport.ClientSize);
+                GizmoAxis hitAxis = HitTestGizmo(new PointF(e.X, e.Y), gizmoCenter, out _);
+                if (hitAxis != GizmoAxis.None)
+                {
+                    _isDraggingGizmo = true;
+                    _activeGizmoAxis = hitAxis;
+                    _dragUndoSnapshot = CaptureSceneSnapshot();
+                    _dragOffset = GetSelectionPivot() - world;
+                    return;
+                }
+            }
+
             Entity? hit = HitTestEntity(world);
+
             bool additiveSelection = (ModifierKeys & (Keys.Control | Keys.Shift)) != 0;
             SelectEntity(hit, additiveSelection);
             if (e.Button == MouseButtons.Left && hit is not null)
@@ -2858,13 +2958,14 @@ public sealed class MainForm : Form
         }
         if (e.Button == MouseButtons.Left)
         {
-            if (_isDraggingSelection && _dragUndoSnapshot is not null)
+            if ((_isDraggingSelection || _isDraggingGizmo) && _dragUndoSnapshot is not null)
             {
                 PushSceneCommand("Move selection", _dragUndoSnapshot);
                 _dragUndoSnapshot = null;
             }
 
             _isDraggingSelection = false;
+            _isDraggingGizmo = false;
         }
     }
 
@@ -2881,9 +2982,64 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (sender == _sceneEditorViewport && !_isPlayMode && _isDraggingSelection && _selectedEntity is not null)
+        if (sender == _sceneEditorViewport && !_isPlayMode)
+        {
+            if (_selectedEntities.Count > 0 && !_isDraggingSelection && !_isDraggingGizmo)
+            {
+                PointF gizmoCenter = _renderer.Camera.WorldToScreen(GetSelectionPivot(), _sceneEditorViewport.ClientSize);
+                GizmoAxis hitAxis = HitTestGizmo(new PointF(e.X, e.Y), gizmoCenter, out _);
+                if (hitAxis != _activeGizmoAxis)
+                {
+                    _activeGizmoAxis = hitAxis;
+                    _sceneEditorViewport.Invalidate();
+                }
+            }
+
+            if (_isDraggingGizmo && _selectedEntities.Count > 0)
+            {
+                Vector2 targetPosition = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
+                if (_snapToGridButton.Checked)
+                {
+                    targetPosition.X = MathF.Round(targetPosition.X / 16.0f) * 16.0f;
+                    targetPosition.Y = MathF.Round(targetPosition.Y / 16.0f) * 16.0f;
+                }
+                Vector2 pivot = GetSelectionPivot();
+                Vector2 delta = Vector2.Zero;
+
+                if (_activeGizmoAxis == GizmoAxis.X)
+                {
+                    delta = new Vector2(targetPosition.X - pivot.X, 0);
+                }
+                else if (_activeGizmoAxis == GizmoAxis.Y)
+                {
+                    delta = new Vector2(0, targetPosition.Y - pivot.Y);
+                }
+                else if (_activeGizmoAxis == GizmoAxis.Center)
+                {
+                    delta = targetPosition - pivot;
+                }
+
+                foreach (Entity entity in ActiveSelection())
+                {
+                    entity.Transform.Value.Position += delta;
+                }
+
+                ShowInspector(_selectedEntity);
+                PopulateEffectsEditor();
+                _sceneEditorViewport.Invalidate();
+                _gameViewport.Invalidate();
+                return;
+            }
+        }
+
+        if (sender == _sceneEditorViewport && !_isPlayMode && _isDraggingSelection && _selectedEntity is not null && !_isDraggingGizmo)
         {
             Vector2 targetPosition = ScreenToWorld(e.Location, _sceneEditorViewport.ClientSize) + _dragOffset;
+            if (_snapToGridButton.Checked)
+            {
+                targetPosition.X = MathF.Round(targetPosition.X / 16.0f) * 16.0f;
+                targetPosition.Y = MathF.Round(targetPosition.Y / 16.0f) * 16.0f;
+            }
             Vector2 delta = targetPosition - _selectedEntity.Transform.Value.Position;
             foreach (Entity entity in ActiveSelection())
             {
@@ -2982,7 +3138,39 @@ public sealed class MainForm : Form
         return new RectangleF(fallback.X - 12.0f, fallback.Y - 12.0f, 24.0f, 24.0f);
     }
 
-    private void DrawSelectionOverlay(System.Drawing.Graphics graphics, Size viewportSize)
+
+    private GizmoAxis HitTestGizmo(PointF screenPosition, PointF gizmoCenter, out float distance)
+    {
+        float xDist = MathF.Abs(screenPosition.X - gizmoCenter.X);
+        float yDist = MathF.Abs(screenPosition.Y - gizmoCenter.Y);
+
+        if (xDist <= 8.0f && yDist <= 8.0f)
+        {
+            distance = 0;
+            return GizmoAxis.Center;
+        }
+
+        distance = float.MaxValue;
+        GizmoAxis axis = GizmoAxis.None;
+
+        if (screenPosition.X > gizmoCenter.X && screenPosition.X <= gizmoCenter.X + 46.0f && yDist <= 6.0f)
+        {
+            axis = GizmoAxis.X;
+            distance = yDist;
+        }
+
+        if (screenPosition.Y < gizmoCenter.Y && screenPosition.Y >= gizmoCenter.Y - 46.0f && xDist <= 6.0f)
+        {
+            if (distance == float.MaxValue || xDist < distance)
+            {
+                axis = GizmoAxis.Y;
+                distance = xDist;
+            }
+        }
+
+        return axis;
+    }
+private void DrawSelectionOverlay(System.Drawing.Graphics graphics, Size viewportSize)
     {
         if (_selectedEntities.Count == 0)
         {
@@ -2997,13 +3185,15 @@ public sealed class MainForm : Form
         graphics.DrawRectangle(selectionPen, screenBounds.X, screenBounds.Y, screenBounds.Width, screenBounds.Height);
 
         PointF center = _renderer.Camera.WorldToScreen(GetSelectionPivot(), viewportSize);
-        using SolidBrush brush = new(Color.DeepSkyBlue);
+        using SolidBrush brush = new(_activeGizmoAxis == GizmoAxis.Center ? Color.Yellow : Color.DeepSkyBlue);
         graphics.FillEllipse(brush, center.X - 4.0f, center.Y - 4.0f, 8.0f, 8.0f);
-        using Pen xAxis = new(Color.OrangeRed, 2.0f);
-        using Pen yAxis = new(Color.LimeGreen, 2.0f);
+        using Pen xAxis = new(_activeGizmoAxis == GizmoAxis.X ? Color.Yellow : Color.OrangeRed, 2.0f);
+        using Pen yAxis = new(_activeGizmoAxis == GizmoAxis.Y ? Color.Yellow : Color.LimeGreen, 2.0f);
         graphics.DrawLine(xAxis, center.X, center.Y, center.X + 42.0f, center.Y);
+        graphics.FillPolygon(new SolidBrush(xAxis.Color), new PointF[] { new PointF(center.X + 42.0f, center.Y - 4.0f), new PointF(center.X + 42.0f, center.Y + 4.0f), new PointF(center.X + 50.0f, center.Y) });
         graphics.DrawLine(yAxis, center.X, center.Y, center.X, center.Y - 42.0f);
-        graphics.DrawString($"{_selectedEntities.Count} selected | Move gizmo | Global | Snap 16px", Font, brush, center.X + 8.0f, center.Y + 8.0f);
+        graphics.FillPolygon(new SolidBrush(yAxis.Color), new PointF[] { new PointF(center.X - 4.0f, center.Y - 42.0f), new PointF(center.X + 4.0f, center.Y - 42.0f), new PointF(center.X, center.Y - 50.0f) });
+        graphics.DrawString($"{_selectedEntities.Count} selected | Move gizmo | Global | Snap 16px" + (_snapToGridButton.Checked ? " (ON)" : " (OFF)"), Font, brush, center.X + 8.0f, center.Y + 8.0f);
     }
 
 

@@ -166,7 +166,7 @@ public sealed class EditorExtensibilityService
 
     private static EditorPackageManifest CreatePackageManifest(string name) => new() { Id = SanitizeId(name), DisplayName = name, Description = "Local editor package" };
 
-    private static string SanitizeId(string value) => new(value.Where(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_').ToArray()).Trim('.', '-', '_').ToLowerInvariant();
+    private static string SanitizeId(string value) => new string(value.Where(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_').ToArray()).Trim('.', '-', '_').ToLowerInvariant();
 
     private static void CopyDirectory(string source, string destination)
     {

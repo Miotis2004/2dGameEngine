@@ -19,6 +19,12 @@ public abstract class Collider2D : Component
     /// </summary>
     public bool IsTrigger { get; set; }
 
+    /// <summary>Gets or sets the physics material used for friction, bounce, and density authoring.</summary>
+    public PhysicsMaterial2D Material { get; set; } = new();
+
+    /// <summary>Gets or sets the collision layer used by the physics collision matrix.</summary>
+    public int Layer { get; set; }
+
     /// <summary>
     /// Gets the collider bounds in world space.
     /// </summary>

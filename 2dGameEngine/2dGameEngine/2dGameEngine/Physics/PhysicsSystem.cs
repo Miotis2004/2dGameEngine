@@ -13,11 +13,21 @@ namespace _2dGameEngine.Physics;
 public sealed class PhysicsSystem
 {
     private const float GroundNormalThreshold = -0.5f;
+    private readonly List<PhysicsContact> _contacts = [];
+    private int _stepIndex;
 
     /// <summary>
     /// Gets or sets the acceleration applied to dynamic bodies in world units per second squared.
     /// </summary>
     public Vector2 Gravity { get; set; } = new(0.0f, 980.0f);
+
+    public float FixedDeltaSeconds { get; set; } = 1.0f / 60.0f;
+
+    public bool UseFixedStep { get; set; } = true;
+
+    public PhysicsLayerMatrix LayerMatrix { get; } = new();
+
+    public PhysicsDebugSnapshot LastDebugSnapshot { get; private set; } = new([], [], [], 0, 1.0f / 60.0f);
 
     /// <summary>
     /// Advances physics simulation for the provided scene.
@@ -29,7 +39,8 @@ public sealed class PhysicsSystem
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(time);
 
-        float deltaSeconds = MathF.Min((float)time.DeltaTime.TotalSeconds, 0.05f);
+        float deltaSeconds = UseFixedStep ? FixedDeltaSeconds : MathF.Min((float)time.DeltaTime.TotalSeconds, 0.05f);
+        _contacts.Clear();
         if (deltaSeconds <= 0.0f)
         {
             return;
@@ -38,11 +49,21 @@ public sealed class PhysicsSystem
         List<Collider2D> colliders = [.. CollisionWorld.GetColliders(scene)];
         foreach (RigidBody2D body in GetDynamicBodies(scene))
         {
+            if (body.IsSleeping)
+            {
+                continue;
+            }
+
             body.IsGrounded = false;
             body.Velocity += Gravity * body.GravityScale * deltaSeconds;
-            body.Entity!.Transform.Value.Position += body.Velocity * deltaSeconds;
+            Vector2 movement = body.Velocity * deltaSeconds;
+            if (body.Constraints.HasFlag(RigidbodyConstraint2D.FreezePositionX)) movement.X = 0.0f;
+            if (body.Constraints.HasFlag(RigidbodyConstraint2D.FreezePositionY)) movement.Y = 0.0f;
+            body.Entity!.Transform.Value.Position += movement;
             ResolveCollisions(body, colliders);
         }
+
+        LastDebugSnapshot = new PhysicsDebugSnapshot([.. _contacts], [.. colliders.Select(collider => collider.GetBounds())], [.. GetDynamicBodies(scene).Where(body => body.IsSleeping).Select(body => body.Entity!)], ++_stepIndex, deltaSeconds);
     }
 
     private static IEnumerable<RigidBody2D> GetDynamicBodies(Scene scene)
@@ -52,7 +73,7 @@ public sealed class PhysicsSystem
             .Where(body => body.IsEnabled && !body.IsKinematic && body.Entity is not null);
     }
 
-    private static void ResolveCollisions(RigidBody2D body, IReadOnlyList<Collider2D> colliders)
+    private void ResolveCollisions(RigidBody2D body, IReadOnlyList<Collider2D> colliders)
     {
         Entity entity = body.Entity!;
         Collider2D? bodyCollider = entity.Components.OfType<Collider2D>().FirstOrDefault(collider => collider.IsEnabled && !collider.IsTrigger);
@@ -63,7 +84,7 @@ public sealed class PhysicsSystem
 
         foreach (Collider2D other in colliders)
         {
-            if (ReferenceEquals(other, bodyCollider) || other.IsTrigger || other.Entity is null)
+            if (ReferenceEquals(other, bodyCollider) || other.IsTrigger || other.Entity is null || !LayerMatrix.CanCollide(bodyCollider.Layer, other.Layer))
             {
                 continue;
             }
@@ -84,7 +105,7 @@ public sealed class PhysicsSystem
         }
     }
 
-    private static void ResolveTilemapCollision(RigidBody2D body, Collider2D bodyCollider, TilemapCollider2D tilemapCollider)
+    private void ResolveTilemapCollision(RigidBody2D body, Collider2D bodyCollider, TilemapCollider2D tilemapCollider)
     {
         foreach (RectangleF tileBounds in tilemapCollider.GetSolidTileBounds(bodyCollider.GetBounds()).ToArray())
         {
@@ -92,7 +113,7 @@ public sealed class PhysicsSystem
         }
     }
 
-    private static void ResolveBoundsCollision(RigidBody2D body, RectangleF current, RectangleF target)
+    private void ResolveBoundsCollision(RigidBody2D body, RectangleF current, RectangleF target)
     {
         if (!CollisionWorld.Intersects(current, target))
         {
@@ -101,6 +122,8 @@ public sealed class PhysicsSystem
 
         Entity entity = body.Entity!;
         Vector2 correction = GetMinimumTranslation(current, target);
+        Vector2 normal = Vector2.Normalize(correction == Vector2.Zero ? new Vector2(0.0f, -1.0f) : correction);
+        _contacts.Add(new PhysicsContact(entity, entity, new Vector2((MathF.Max(current.Left, target.Left) + MathF.Min(current.Right, target.Right)) / 2.0f, (MathF.Max(current.Top, target.Top) + MathF.Min(current.Bottom, target.Bottom)) / 2.0f), normal, correction.Length(), current));
         entity.Transform.Value.Position += correction;
 
         if (MathF.Abs(correction.X) > 0.0f)

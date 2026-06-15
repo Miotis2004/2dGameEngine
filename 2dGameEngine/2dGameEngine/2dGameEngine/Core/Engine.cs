@@ -2,6 +2,7 @@ using System;
 using System.Windows.Forms;
 using _2dGameEngine.Audio;
 using _2dGameEngine.Input;
+using _2dGameEngine.Services;
 
 namespace _2dGameEngine.Core;
 
@@ -20,6 +21,7 @@ public sealed class Engine
         Time = new Time();
         Input = new InputState();
         Audio = new AudioMixer();
+        Services = new GameServices();
         _updateTimer = new Timer
         {
             Interval = 16,
@@ -56,6 +58,11 @@ public sealed class Engine
     /// Gets the runtime audio mixer shared by scene audio sources and the editor.
     /// </summary>
     public AudioMixer Audio { get; }
+
+    /// <summary>
+    /// Gets save data, localization, achievements, and leaderboard services for gameplay code.
+    /// </summary>
+    public GameServices Services { get; }
 
     /// <summary>
     /// Gets a value indicating whether the engine update loop is running.

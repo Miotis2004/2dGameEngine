@@ -40,6 +40,7 @@ public static class EditorProjectScaffolder
         Directory.CreateDirectory(Path.Combine(gameDirectory, "Scripts"));
         Directory.CreateDirectory(Path.Combine(projectDirectory, "ProjectSettings"));
         Directory.CreateDirectory(editorDirectory);
+        Directory.CreateDirectory(Path.Combine(editorDirectory, "Properties"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Sprites"));
         Directory.CreateDirectory(Path.Combine(assetsDirectory, "Audio"));
         Directory.CreateDirectory(scenesDirectory);
@@ -59,8 +60,10 @@ public static class EditorProjectScaffolder
         WriteFile(Path.Combine(gameDirectory, "Scripts", "PlayerController.cs"), CreateStarterScript(safeName));
         WriteFile(Path.Combine(editorDirectory, $"{safeName}.Editor.csproj"), CreateEditorProject(safeName));
         WriteFile(Path.Combine(editorDirectory, "Program.cs"), CreateEditorProgram(safeName));
+        WriteFile(Path.Combine(editorDirectory, "Properties", "launchSettings.json"), CreateLaunchSettings(safeName));
         WriteFile(Path.Combine(scenesDirectory, "Main.scene.json"), CreateDefaultScene(projectName));
         WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "Unity2Project.json"), CreateProjectSettings(projectName));
+        WriteFile(Path.Combine(projectDirectory, "ProjectSettings", "ScriptTooling.json"), CreateScriptToolingSettings());
         WriteFile(Path.Combine(assetsDirectory, "README.md"), "# Assets\n\nPlace sprites, audio, fonts, and other imported content in this folder. Runtime behavior is authored only in C#.\n");
 
         return new CreatedProject(projectName, safeName, projectDirectory, Path.Combine(projectDirectory, $"{safeName}.sln"), assetsDirectory, scenesDirectory);
@@ -262,6 +265,30 @@ GameBootstrapper.CreateDefaultSettings();
 Console.WriteLine("{{safeName}} editor host is ready.");
 """;
 
+    private static string CreateLaunchSettings(string safeName) => $$"""
+{
+  "profiles": {
+    "{{safeName}}.Editor": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "UNITY2_SCRIPT_DEBUGGING": "1",
+        "DOTNET_MODIFIABLE_ASSEMBLIES": "debug"
+      },
+      "hotReloadEnabled": true
+    }
+  }
+}
+""";
+
+    private static string CreateScriptToolingSettings() => """
+{
+  "hotReloadEnabled": true,
+  "debuggerTransport": "managed",
+  "lastHotReloadAt": "0001-01-01T00:00:00+00:00",
+  "breakpoints": []
+}
+""";
+
     private static string CreateReadme(string projectName) => $$"""
 # {{projectName}}
 
@@ -281,7 +308,9 @@ Created with Unity 2 Clone. This project uses C# as its only gameplay scripting 
   "editor": "Unity 2 Clone",
   "dimension": "2D",
   "scriptingBackend": "CSharpOnly",
-  "supportedLanguages": ["CSharp"]
+  "supportedLanguages": ["CSharp"],
+  "scriptDebugging": true,
+  "hotReload": true
 }
 """;
 
